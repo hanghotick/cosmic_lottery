@@ -1,0 +1,41 @@
+# .gitignore for Cosmic Lottery (Stellar Fortune)
+
+# Node modules (if ever used for tooling)
+node_modules/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# VSCode settings
+.vscode/
+
+# System files
+*.log
+*.tmp
+
+# Compiled output (if any in future)
+dist/
+build/
+
+# Python cache (if any Python scripts are added)
+__pycache__/
+*.pyc
+
+# Backup files
+*~
+*.bak
+
+# OneDrive sync files
+*.lnk
+
+# Ignore personal or sensitive files
+secrets.*
+.env
+.env.*
+
+# Ignore macOS resource forks
+*.AppleDouble
+
+# Ignore Windows hidden files
+Desktop.ini

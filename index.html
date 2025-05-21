@@ -308,6 +308,34 @@
             cursor: pointer;
             box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
         }
+
+        /* --- Loading Indicator --- */
+        #loadingOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 20000;
+        }
+
+        .spinner {
+            border: 6px solid #eee;
+            border-top: 6px solid #8c07d3;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -349,6 +377,13 @@
         <p id="messageText"></p>
         <button id="messageBoxOkButton"></button>
         <button class="action-button" id="messageBoxNewGameButton" style="display: none;"></button>
+    </div>
+
+    <div id="loadingOverlay" style="display:none;">
+        <div style="display:flex;flex-direction:column;align-items:center;">
+            <div class="spinner" style="border: 6px solid #eee; border-top: 6px solid #8c07d3; border-radius: 50%; width: 60px; height: 60px; animation: spin 1s linear infinite;"></div>
+            <div style="color:#fff; margin-top:1.5rem; font-size:1.2rem; text-align:center;">Loading particles...</div>
+        </div>
     </div>
 
     <script type="module">
@@ -669,7 +704,6 @@
             camera.position.x = cameraRadius * Math.sin(cameraTheta) * Math.sin(cameraPhi);
             camera.position.y = cameraRadius * Math.cos(cameraTheta);
             camera.position.z = cameraRadius * Math.sin(cameraTheta) * Math.cos(cameraPhi);
-
             camera.lookAt(0, 0, 0); // Always look at the center of the cube
 
             previousClientX = currentClientX;
@@ -724,94 +758,141 @@
 
         // Initialize particles as THREE.Mesh spheres
         function initParticles() {
-            console.log("initParticles: Current window.particles.length before clearing:", window.particles.length); // Debugging log
+            showLoading();
+            setTimeout(() => { // Allow spinner to show for at least a frame
+                console.log("initParticles: Current window.particles.length before clearing:", window.particles.length); // Debugging log
 
-            // Remove existing particles from scene and dispose geometries/materials
-            window.particles.forEach(p => {
-                scene.remove(p.mesh);
-                p.mesh.geometry.dispose();
-                p.mesh.material.dispose();
-                if (p.textMesh) {
-                    if (p.mesh.children.includes(p.textMesh)) {
-                        p.mesh.remove(p.textMesh);
+                // Remove existing particles from scene and dispose geometries/materials
+                window.particles.forEach(p => {
+                    scene.remove(p.mesh);
+                    p.mesh.geometry.dispose();
+                    p.mesh.material.dispose();
+                    if (p.textMesh) {
+                        if (p.mesh.children.includes(p.textMesh)) {
+                            p.mesh.remove(p.textMesh);
+                        }
+                        p.textMesh.geometry.dispose();
+                        p.textMesh.material.dispose();
                     }
-                    p.textMesh.geometry.dispose();
-                    p.textMesh.material.dispose();
+                });
+                window.particles = []; // Clear the array
+                selectedParticlesArray = []; // Reset selected particles array
+                window.luckyParticleSelected = false; // Reset flag
+                
+                // Reset state flags
+                isFloating = true;
+                isSwirling = false;
+                isClashing = false;
+                isLiningUp = false;
+
+                statusOutput.textContent = translations[currentLanguage].statusInitial; // Reset status text
+
+                // Reset dynamic swirl parameters (not used for floating, but kept for structure)
+                currentOrbitalVelocityFactor = orbitalVelocityFactor;
+                currentGravitationalPull = gravitationalPull;
+
+                console.log("initParticles: maxParticleNumber is", maxParticleNumber); // Debugging log
+
+                const center = new THREE.Vector3(0, 0, 0);
+                const sphereGeometry = new THREE.SphereGeometry(particleRadius, 16, 16);
+
+                initialParticleColor.setHSL(particleColorHue / 360, particleColorSaturation / 100, particleColorLightness / 100);
+
+                try { // Added try-catch for particle creation loop
+                    // Create particles up to maxParticleNumber
+                    for (let i = 0; i < maxParticleNumber; i++) {
+                        let x = (Math.random() - 0.5) * boxSize;
+                        let y = (Math.random() - 0.5) * boxSize;
+                        let z = (Math.random() - 0.5) * boxSize;
+
+                        const particlePos = new THREE.Vector3(x, y, z);
+                        const material = new THREE.MeshBasicMaterial({ color: initialParticleColor.clone() });
+                        const mesh = new THREE.Mesh(sphereGeometry, material);
+                        mesh.position.set(x, y, z);
+                        scene.add(mesh);
+
+                        // Initialize particles with very low velocity for initial "floating"
+                        const initialVelocity = new THREE.Vector3(
+                            (Math.random() - 0.5) * particleSpeedFactor * 0.1,
+                            (Math.random() - 0.5) * particleSpeedFactor * 0.1,
+                            (Math.random() - 0.5) * particleSpeedFactor * 0.1
+                        );
+
+                        window.particles.push({ // Use window.particles
+                            mesh: mesh,
+                            velocity: initialVelocity,
+                            number: i + 1 // Particles are numbered from 1 up to maxParticleNumber
+                        });
+                        // Log first and last particle to confirm pushing
+                        if (i === 0 || i === maxParticleNumber - 1) {
+                            console.log(`initParticles: Pushed particle ${i + 1}. Current array size: ${window.particles.length}`);
+                        }
+                    }
+                } catch (error) {
+                    console.error("Error during particle creation in initParticles:", error); // Ensure this is visible
+                    window.showMessageBox("Error creating particles. Check console for details.");
                 }
+                console.log("initParticles: Particles created, total:", window.particles.length); // Debugging log
+                // Reset camera to initial position on re-init
+                camera.position.x = cameraRadius * Math.sin(cameraTheta) * Math.sin(cameraPhi);
+                camera.position.y = cameraRadius * Math.cos(cameraTheta);
+                camera.position.z = cameraRadius * Math.sin(cameraTheta) * Math.cos(cameraPhi);
+                camera.lookAt(0, 0, 0);
+                hideLoading();
+            }, 10);
+        }
+
+        // --- Web Worker Setup for Physics ---
+        let physicsWorker = null;
+        let useWorker = true; // Set to false to disable worker for debugging
+        let workerParticles = [];
+
+        function startPhysicsWorker() {
+            if (!useWorker) return;
+            if (physicsWorker) physicsWorker.terminate();
+            physicsWorker = new Worker('worker.js');
+            physicsWorker.onmessage = function(e) {
+                const updated = e.data.particles;
+                // Update main thread particle positions/velocities
+                for (let i = 0; i < window.particles.length; i++) {
+                    window.particles[i].mesh.position.set(...updated[i].position);
+                    window.particles[i].velocity.set(...updated[i].velocity);
+                }
+            };
+        }
+
+        function updateParticlesWithWorker(phase) {
+            if (!useWorker || !physicsWorker) return false;
+            // Prepare data for worker
+            const particlesData = window.particles.map(p => ({
+                position: [p.mesh.position.x, p.mesh.position.y, p.mesh.position.z],
+                velocity: [p.velocity.x, p.velocity.y, p.velocity.z]
+            }));
+            const params = {
+                damping, galacticRandomMotion, peculiarVelocity: [peculiarVelocity.x,peculiarVelocity.y,peculiarVelocity.z],
+                cosmicExpansionFactor, boxSize, particleRadius, clashInwardForce: 0.005
+            };
+            const selectedIndices = selectedParticlesArray.map(p => window.particles.indexOf(p));
+            physicsWorker.postMessage({
+                particles: particlesData,
+                params,
+                phase,
+                selectedIndices,
+                time: Date.now(),
+                lineUpStartTime,
+                lineUpDuration,
+                dynamicTargetParticlePositions: dynamicTargetParticlePositions.map(v => [v.x, v.y, v.z])
             });
-            window.particles = []; // Clear the array
-            selectedParticlesArray = []; // Reset selected particles array
-            window.luckyParticleSelected = false; // Reset flag
-            
-            // Reset state flags
-            isFloating = true;
-            isSwirling = false;
-            isClashing = false;
-            isLiningUp = false;
-
-            statusOutput.textContent = translations[currentLanguage].statusInitial; // Reset status text
-
-            // Reset dynamic swirl parameters (not used for floating, but kept for structure)
-            currentOrbitalVelocityFactor = orbitalVelocityFactor;
-            currentGravitationalPull = gravitationalPull;
-
-            console.log("initParticles: maxParticleNumber is", maxParticleNumber); // Debugging log
-
-            const center = new THREE.Vector3(0, 0, 0);
-            const sphereGeometry = new THREE.SphereGeometry(particleRadius, 16, 16);
-
-            initialParticleColor.setHSL(particleColorHue / 360, particleColorSaturation / 100, particleColorLightness / 100);
-
-            try { // Added try-catch for particle creation loop
-                // Create particles up to maxParticleNumber
-                for (let i = 0; i < maxParticleNumber; i++) {
-                    let x = (Math.random() - 0.5) * boxSize;
-                    let y = (Math.random() - 0.5) * boxSize;
-                    let z = (Math.random() - 0.5) * boxSize;
-
-                    const particlePos = new THREE.Vector3(x, y, z);
-                    const material = new THREE.MeshBasicMaterial({ color: initialParticleColor.clone() });
-                    const mesh = new THREE.Mesh(sphereGeometry, material);
-                    mesh.position.set(x, y, z);
-                    scene.add(mesh);
-
-                    // Initialize particles with very low velocity for initial "floating"
-                    const initialVelocity = new THREE.Vector3(
-                        (Math.random() - 0.5) * particleSpeedFactor * 0.1,
-                        (Math.random() - 0.5) * particleSpeedFactor * 0.1,
-                        (Math.random() - 0.5) * particleSpeedFactor * 0.1
-                    );
-
-                    window.particles.push({ // Use window.particles
-                        mesh: mesh,
-                        velocity: initialVelocity,
-                        number: i + 1 // Particles are numbered from 1 up to maxParticleNumber
-                    });
-                    // Log first and last particle to confirm pushing
-                    if (i === 0 || i === maxParticleNumber - 1) {
-                        console.log(`initParticles: Pushed particle ${i + 1}. Current array size: ${window.particles.length}`);
-                    }
-                }
-            } catch (error) {
-                console.error("Error during particle creation in initParticles:", error); // Ensure this is visible
-                window.showMessageBox("Error creating particles. Check console for details.");
-            }
-            console.log("initParticles: Particles created, total:", window.particles.length); // Debugging log
-            // Reset camera to initial position on re-init
-            camera.position.x = cameraRadius * Math.sin(cameraTheta) * Math.sin(cameraPhi);
-            camera.position.y = cameraRadius * Math.cos(cameraTheta);
-            camera.position.z = cameraRadius * Math.sin(cameraTheta) * Math.cos(cameraPhi);
-            camera.lookAt(0, 0, 0);
+            return true;
         }
 
         // Animation loop
         function animate() {
             requestAnimationFrame(animate);
-
-            updateParticles();
-
-            // Automatic cube rotation is removed as per user request.
-            // Cube only rotates with user interaction (mouse/touch drag).
+            let phase = isFloating ? 'floating' : isSwirling ? 'swirling' : isClashing ? 'clashing' : isLiningUp ? 'liningUp' : 'floating';
+            if (!updateParticlesWithWorker(phase)) {
+                updateParticles(); // fallback to main thread if worker not used
+            }
             renderer.render(scene, camera);
         }
 
@@ -1180,6 +1261,8 @@
             // Initial state: particles are floating, not swirling intensely
             // The `updateParticles` function will handle the floating motion when `isFloating` is true.
             statusOutput.textContent = translations[currentLanguage].statusInitial;
+
+            startPhysicsWorker();
 
             console.log("window.onload: Initialization complete.");
         };

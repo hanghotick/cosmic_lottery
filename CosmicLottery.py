@@ -224,9 +224,10 @@ class ParticleWindow(pyglet.window.Window):
 
 # --- Tkinter UI (Optional, for controls) ---
 def run_ui():
+    global camera_zoom
     root = tk.Tk()
     root.title("Cosmic Lottery Controls")
-    root.geometry("500x300+1050+100")
+    root.geometry("400x300+1050+100")
     # Zoom slider
     zoom_label = tk.Label(root, text="Initial Zoom:")
     zoom_label.pack(pady=5)
@@ -238,17 +239,19 @@ def run_ui():
         camera_zoom = float(val)
     zoom_slider.config(command=on_zoom)
     # Restart button
-    tk.Button(root, text="🔄 Restart Simulation 🔄", command=reset_particles).pack(pady=5)
+    tk.Button(root, text="🔄 Restart Simulation 🔄", command=reset_particles).pack(pady=10)
     # Lucky particle
-    tk.Button(root, text="🎲 Select Lucky Particle 🎲", command=select_lucky_particle).pack(pady=5)
+    tk.Button(root, text="🎲 Select Lucky Particle 🎲", command=select_lucky_particle).pack(pady=10)
+    # Exit button
+    tk.Button(root, text="Exit", command=root.destroy).pack(pady=10)
     root.mainloop()
 
 # --- Main ---
 def main():
     reset_particles()
-    # Start UI in a thread (optional, comment out if not needed)
-    # ui_thread = threading.Thread(target=run_ui, daemon=True)
-    # ui_thread.start()
+    # Start UI in a thread (enabled)
+    ui_thread = threading.Thread(target=run_ui, daemon=True)
+    ui_thread.start()
     # Start 3D window (main thread)
     window = ParticleWindow()
     pyglet.app.run()

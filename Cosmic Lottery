@@ -238,6 +238,9 @@
             document.getElementById('messageBox').style.display = 'none';
         };
 
+        // --- Configurable Parameters ---
+        const COUNTDOWN_SECONDS = 10; // Set countdown to 10 seconds for a more dramatic effect
+
         // --- Three.js Setup ---
         // `window.particles` is now declared globally in a separate script tag above.
         let scene, camera, renderer, cubeWireframe;
@@ -276,7 +279,7 @@
         // Lucky particle selection variables
         const numberOfSelectedParticles = 6;
         let selectedParticlesArray = [];
-        let countdownValue = 3;
+        let countdownValue = COUNTDOWN_SECONDS;
     
         let countdownInterval;
         let countdownDisplay;
@@ -626,7 +629,7 @@
         window.startCountdown = function() {
             clearInterval(countdownInterval);
             countdownDisplay.style.display = 'block';
-            countdownValue = 3;
+            countdownValue = COUNTDOWN_SECONDS;
             countdownDisplay.textContent = countdownValue;
 
             countdownInterval = setInterval(() => {

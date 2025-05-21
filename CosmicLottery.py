@@ -79,56 +79,26 @@ def on_zoom_slider_change():
     camera.look_at(Vec3(0,0,0))
 zoom_slider.on_value_changed = on_zoom_slider_change
 
-# --- Utility Functions ---
-def show_message_box(message):
-    message_box_text.text = message
-    message_box_panel.enabled = True
-    message_box_panel.z = -1 # Bring to front
-    message_box_panel.scale = (camera.aspect_ratio * 0.5, 0.5) # Adjust size based on aspect ratio
-    message_box_text.world_scale = 0.05 # Ensure text scales properly
-    message_box_button.world_scale = 0.05 # Ensure button scales properly
+# --- Particle Trail Effect ---
+class ParticleTrail(Entity):
+    def __init__(self, parent_particle, trail_length=10, color=color.white):
+        super().__init__(parent=container_entity)
+        self.parent_particle = parent_particle
+        self.trail_length = trail_length
+        self.positions = [parent_particle.position for _ in range(trail_length)]
+        self.line = Entity(model=Mesh(mode='line', vertices=self.positions), color=color, always_on_top=True)
+        self.color = color
 
-def hide_message_box():
-    message_box_panel.enabled = False
-
-def reduce_to_single_digit(number):
-    if number in [11, 22, 33]:
-        return number
-    s = 0
-    while number > 0 or s > 9:
-        if number == 0:
-            number = s
-            s = 0
-        s += number % 10
-        number = math.floor(number / 10)
-    return s
-
-def get_numerology_meaning(number):
-    meanings = {
-        1: "The Leader: New beginnings, independence, and strong will. You are destined to forge your own path.",
-        2: "The Harmonizer: Balance, cooperation, and diplomacy. Your path is one of partnership and understanding.",
-        3: "The Creator: Creativity, communication, and joy. Express yourself and inspire others with your vibrant energy.",
-        4: "The Builder: Stability, hard work, and strong foundations. Diligence will lead you to lasting success.",
-        5: "The Adventurer: Freedom, change, and adaptability. Embrace new experiences and explore the world around you.",
-        6: "The Nurturer: Responsibility, harmony, and compassion. Your focus is on home, family, and service to others.",
-        7: "The Seeker: Spirituality, introspection, and wisdom. Your journey is one of deep thought and discovery.",
-        8: "The Achiever: Abundance, power, and ambition. You have the potential for great material and personal success.",
-        9: "The Humanitarian: Completion, compassion, and universal love. Your purpose is to serve humanity.",
-        11: "The Master Intuitive: High intuition, inspiration, and spiritual insight. You are a channel for higher truths.",
-        22: "The Master Builder: Practical idealism, vision, and large-scale creation. You can manifest great dreams.",
-        33: "The Master Teacher: Compassionate service, universal love, and healing. You are here to uplift humanity.",
-    }
-    return meanings.get(number, "An unknown cosmic energy surrounds your numbers. Explore further!")
-
-def display_numerology_fortune(total_sum, selected_numbers_string):
-    numerology_number = reduce_to_single_digit(total_sum)
-    meaning = get_numerology_meaning(numerology_number)
-    message = (
-        f'Your Lucky Numbers: {selected_numbers_string}\n'
-        f'Numerology Sum: {numerology_number}\n'
-        f'{meaning}'
-    )
-    show_message_box(message)
+    def update(self):
+        # Add current position to the front, pop oldest
+        self.positions.insert(0, Vec3(self.parent_particle.position))
+        if len(self.positions) > self.trail_length:
+            self.positions.pop()
+        # Update mesh
+        self.line.model.vertices = self.positions
+        self.line.model.generate()
+        self.line.color = self.color
+        self.line.enabled = self.parent_particle.enabled
 
 # --- Particle Class ---
 class Particle(Entity):
@@ -145,6 +115,7 @@ class Particle(Entity):
         self.number = number
         self.is_selected = False
         self.text_entity = None # To hold the Text entity for selected particles
+        self.trail = ParticleTrail(self, trail_length=12, color=self.color.tint(-0.2))
 
     def update(self):
         global explosion_active, is_lining_up
@@ -509,6 +480,39 @@ mouse_handler.on_mouse_down = on_mouse_down
 mouse_handler.on_mouse_drag = on_mouse_drag
 mouse_handler.on_mouse_up = on_mouse_up
 
+
+# --- Dynamic Starfield/Nebula Background ---
+class Starfield(Entity):
+    def __init__(self, num_stars=120, nebula=False):
+        super().__init__(parent=scene, z=99)
+        self.stars = []
+        for _ in range(num_stars):
+            x = random.uniform(-0.95, 0.95)
+            y = random.uniform(-0.95, 0.95)
+            size = random.uniform(0.002, 0.01)
+            brightness = random.uniform(0.5, 1.0)
+            c = color.rgba(200+int(55*brightness), 200+int(55*brightness), 255, int(180*brightness))
+            s = Entity(parent=self, model='quad', scale=(size, size), x=x, y=y, color=c, z=0)
+            s._vx = random.uniform(-0.0001, 0.0001)
+            s._vy = random.uniform(-0.0001, 0.0001)
+            self.stars.append(s)
+        self.nebula = None
+        if nebula:
+            self.nebula = Entity(parent=self, model='quad', scale=(2,2), color=color.rgba(80,40,120,60), z=-0.1)
+            self.nebula._angle = random.uniform(0,360)
+    def update(self):
+        for s in self.stars:
+            s.x += s._vx
+            s.y += s._vy
+            # Wrap around
+            if s.x > 1: s.x = -1
+            if s.x < -1: s.x = 1
+            if s.y > 1: s.y = -1
+            if s.y < -1: s.y = 1
+        if self.nebula:
+            self.nebula.rotation_z += 0.01
+
+starfield = Starfield(num_stars=120, nebula=True)
 
 # --- Main Update Loop for Ursina ---
 def update():

@@ -204,6 +204,7 @@
         console.log("Global script: window.particles initialized to:", window.particles);
     </script>
 
+    <canvas id="starfieldCanvas" style="position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:0; pointer-events:none;"></canvas>
     <canvas id="particleCanvas"></canvas>
 
     <div class="controls-output-container">
@@ -226,6 +227,76 @@
     </div>
 
     <script type="module">
+        // --- Starfield/Nebula Background ---
+        const starfieldCanvas = document.getElementById('starfieldCanvas');
+        const starfieldCtx = starfieldCanvas.getContext('2d');
+        let stars = [];
+        let nebulaGradient = null;
+        function resizeStarfield() {
+            starfieldCanvas.width = window.innerWidth;
+            starfieldCanvas.height = window.innerHeight;
+            nebulaGradient = starfieldCtx.createRadialGradient(
+                starfieldCanvas.width/2, starfieldCanvas.height/2, starfieldCanvas.width/8,
+                starfieldCanvas.width/2, starfieldCanvas.height/2, starfieldCanvas.width/1.2
+            );
+            nebulaGradient.addColorStop(0, 'rgba(80,40,120,0.18)');
+            nebulaGradient.addColorStop(0.5, 'rgba(40,20,60,0.10)');
+            nebulaGradient.addColorStop(1, 'rgba(0,0,0,0.0)');
+        }
+        function initStarfield(numStars=120) {
+            stars = [];
+            for (let i=0; i<numStars; i++) {
+                stars.push({
+                    x: Math.random()*starfieldCanvas.width,
+                    y: Math.random()*starfieldCanvas.height,
+                    r: Math.random()*1.2+0.3,
+                    vx: (Math.random()-0.5)*0.04,
+                    vy: (Math.random()-0.5)*0.04,
+                    alpha: Math.random()*0.5+0.5
+                });
+            }
+        }
+        function drawStarfield() {
+            starfieldCtx.clearRect(0,0,starfieldCanvas.width,starfieldCanvas.height);
+            // Nebula
+            if (nebulaGradient) {
+                starfieldCtx.fillStyle = nebulaGradient;
+                starfieldCtx.fillRect(0,0,starfieldCanvas.width,starfieldCanvas.height);
+            }
+            // Stars
+            for (let s of stars) {
+                starfieldCtx.beginPath();
+                starfieldCtx.arc(s.x, s.y, s.r, 0, 2*Math.PI);
+                starfieldCtx.fillStyle = `rgba(200,200,255,${s.alpha})`;
+                starfieldCtx.shadowColor = '#8c07d3';
+                starfieldCtx.shadowBlur = 8;
+                starfieldCtx.fill();
+                starfieldCtx.shadowBlur = 0;
+            }
+        }
+        function updateStarfield() {
+            for (let s of stars) {
+                s.x += s.vx;
+                s.y += s.vy;
+                if (s.x < 0) s.x += starfieldCanvas.width;
+                if (s.x > starfieldCanvas.width) s.x -= starfieldCanvas.width;
+                if (s.y < 0) s.y += starfieldCanvas.height;
+                if (s.y > starfieldCanvas.height) s.y -= starfieldCanvas.height;
+            }
+        }
+        function animateStarfield() {
+            updateStarfield();
+            drawStarfield();
+            requestAnimationFrame(animateStarfield);
+        }
+        window.addEventListener('resize', ()=>{
+            resizeStarfield();
+            initStarfield();
+        });
+        resizeStarfield();
+        initStarfield();
+        animateStarfield();
+
         // Debugging: Initial state of window.particles (from module perspective, after imports)
         console.log("Script module (after imports) loaded. Initial window.particles:", window.particles);
 
@@ -430,14 +501,12 @@
                     p.textMesh.material.dispose();
                 }
             });
-            window.particles = []; // Clear the array
-            selectedParticlesArray = []; // Reset selected particles array
-            window.luckyParticleSelected = false; // Reset flag
-            explosionActive = false; // Reset explosion flag
-            isLiningUp = false; // Reset lining up flag
-            document.getElementById('statusOutput').textContent = 'Press Start to begin the Lucky Draw!'; // Reset status text
-
-            // Reset dynamic swirl parameters
+            window.particles = [];
+            selectedParticlesArray = [];
+            window.luckyParticleSelected = false;
+            explosionActive = false;
+            isLiningUp = false;
+            document.getElementById('statusOutput').textContent = 'Press Start to begin the Lucky Draw!';
             currentOrbitalVelocityFactor = orbitalVelocityFactor;
             currentGravitationalPull = gravitationalPull;
 
@@ -510,6 +579,50 @@
             camera.position.z = initialZoomValue;
             camera.position.y = boxSize * 0.2;
             camera.lookAt(0, 0, 0);
+            createParticleTrails();
+        }
+
+        // --- Particle Trails ---
+        let particleTrails = [];
+        function createParticleTrails() {
+            particleTrails = window.particles.map(p => ({
+                positions: [p.mesh.position.clone()],
+                color: p.mesh.material.color.clone(),
+                mesh: p.mesh
+            }));
+        }
+        function updateParticleTrails() {
+            for (let i=0; i<window.particles.length; i++) {
+                const p = window.particles[i];
+                const trail = particleTrails[i];
+                if (!trail) continue;
+                // Add new position
+                trail.positions.push(p.mesh.position.clone());
+                if (trail.positions.length > 16) trail.positions.shift();
+            }
+        }
+        function renderParticleTrails() {
+            // Remove old trail objects
+            for (let t of particleTrails) {
+                if (t.line) {
+                    scene.remove(t.line);
+                }
+            }
+            // Add new trail lines
+            for (let i=0; i<particleTrails.length; i++) {
+                const trail = particleTrails[i];
+                if (trail.positions.length < 2) continue;
+                const geometry = new THREE.BufferGeometry().setFromPoints(trail.positions);
+                const material = new THREE.LineBasicMaterial({
+                    color: trail.color,
+                    transparent: true,
+                    opacity: 0.25,
+                    linewidth: 2
+                });
+                const line = new THREE.Line(geometry, material);
+                scene.add(line);
+                trail.line = line;
+            }
         }
 
         // Animation loop
@@ -517,6 +630,8 @@
             requestAnimationFrame(animate);
 
             updateParticles();
+            updateParticleTrails();
+            renderParticleTrails();
 
             // Automatic cube rotation only if not dragging and not lining up
             if (!window.luckyParticleSelected && !isDragging && !isLiningUp) {

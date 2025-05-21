@@ -96,7 +96,7 @@
             display: flex; /* Use flex for centering content */
             align-items: center; /* Center vertically */
             justify-content: center; /* Center horizontally */
-            word-break: break-word; /* Ensure long words break */
+            word-break: break-word; /* Ensure long words breaks */
             margin-top: 1rem;
         }
 

@@ -761,400 +761,137 @@
             console.log("initParticles: Loading overlay hidden. Initialization complete.");
         }
 
-        function animate() {
+        // Performance monitoring and optimization
+        const FRAME_HISTORY_LENGTH = 60; // Track last 60 frames
+        const TARGET_FPS = 60;
+        const MIN_FPS_BEFORE_OPTIMIZE = 45;
+        let frameTimeHistory = [];
+        let particleCulling = true;
+        let isLowPerformanceMode = false;
+
+        function initPerformanceMonitoring() {
+            // Add FPS counter
+            const fpsCounter = document.createElement('div');
+            fpsCounter.id = 'fpsCounter';
+            fpsCounter.style.position = 'fixed';
+            fpsCounter.style.top = '10px';
+            fpsCounter.style.right = '10px';
+            fpsCounter.style.backgroundColor = 'rgba(0,0,0,0.7)';
+            fpsCounter.style.color = 'white';
+            fpsCounter.style.padding = '5px 10px';
+            fpsCounter.style.borderRadius = '3px';
+            fpsCounter.style.fontFamily = 'monospace';
+            fpsCounter.style.display = 'none'; // Hidden by default
+            document.body.appendChild(fpsCounter);
+
+            // Add performance toggle button
+            const perfButton = document.createElement('button');
+            perfButton.className = 'action-button';
+            perfButton.textContent = '📊 Performance';
+            perfButton.style.marginTop = '1rem';
+            perfButton.addEventListener('click', () => {
+                fpsCounter.style.display = fpsCounter.style.display === 'none' ? 'block' : 'none';
+            });
+            document.querySelector('.sidebar-content').appendChild(perfButton);
+        }
+
+        function updatePerformanceMetrics(timestamp) {
+            // Calculate frame time
+            const frameTime = timestamp - lastFrameTime;
+            lastFrameTime = timestamp;
+            
+            // Update frame history
+            frameTimeHistory.push(frameTime);
+            if (frameTimeHistory.length > FRAME_HISTORY_LENGTH) {
+                frameTimeHistory.shift();
+            }
+
+            // Calculate average FPS
+            const averageFrameTime = frameTimeHistory.reduce((a, b) => a + b) / frameTimeHistory.length;
+            const currentFPS = 1000 / averageFrameTime;
+
+            // Update FPS counter
+            if (document.getElementById('fpsCounter').style.display !== 'none') {
+                document.getElementById('fpsCounter').textContent = `FPS: ${currentFPS.toFixed(1)}`;
+            }
+
+            // Check if we need to enable low performance mode
+            if (!isLowPerformanceMode && currentFPS < MIN_FPS_BEFORE_OPTIMIZE) {
+                enableLowPerformanceMode();
+            } else if (isLowPerformanceMode && currentFPS > TARGET_FPS) {
+                disableLowPerformanceMode();
+            }
+
+            return currentFPS;
+        }
+
+        function enableLowPerformanceMode() {
+            isLowPerformanceMode = true;
+            particleCulling = true;
+            
+            // Reduce particle detail
+            if (instancedParticles) {
+                const simpleGeometry = new THREE.BoxGeometry(particleRadius * 2, particleRadius * 2, particleRadius * 2);
+                instancedParticles.geometry.dispose();
+                instancedParticles.geometry = simpleGeometry;
+            }
+
+            // Announce to screen readers
+            const announcement = document.createElement('div');
+            announcement.setAttribute('role', 'status');
+            announcement.setAttribute('aria-live', 'polite');
+            announcement.textContent = 'Optimizing performance';
+            announcement.style.position = 'absolute';
+            announcement.style.clip = 'rect(0 0 0 0)';
+            document.body.appendChild(announcement);
+            setTimeout(() => announcement.remove(), 1000);
+        }
+
+        function disableLowPerformanceMode() {
+            isLowPerformanceMode = false;
+            
+            // Restore particle detail
+            if (instancedParticles) {
+                const detailedGeometry = new THREE.SphereGeometry(particleRadius, 16, 16);
+                instancedParticles.geometry.dispose();
+                instancedParticles.geometry = detailedGeometry;
+            }
+        }
+
+        // Update animate function with performance monitoring
+        function animate(timestamp) {
             requestAnimationFrame(animate);
-            updateParticles();
+
+            // Performance monitoring
+            const currentFPS = updatePerformanceMetrics(timestamp);
+
+            // Particle culling - only update particles in view
+            if (particleCulling) {
+                const frustum = new THREE.Frustum();
+                const projScreenMatrix = new THREE.Matrix4();
+                projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+                frustum.setFromProjectionMatrix(projScreenMatrix);
+
+                // Update matrices only for visible particles
+                for (let i = 0; i < window.particles.length; i++) {
+                    const p = window.particles[i];
+                    if (frustum.containsPoint(p.position)) {
+                        dummy.position.copy(p.position);
+                        dummy.updateMatrix();
+                        instancedParticles.setMatrixAt(i, dummy.matrix);
+                    }
+                }
+            }
+
+            // Throttle updates if FPS is too low
+            if (!isLowPerformanceMode || currentFPS >= MIN_FPS_BEFORE_OPTIMIZE) {
+                updateParticles();
+            }
+
             renderer.render(scene, camera);
         }
 
-        function updateParticles() {
-            const center = new THREE.Vector3(0, 0, 0);
-
-            peculiarVelocity.x += (Math.random() - 0.5) * peculiarVelocityChangeRate;
-            peculiarVelocity.y += (Math.random() - 0.5) * peculiarVelocityChangeRate;
-            peculiarVelocity.z += (Math.random() - 0.5) * peculiarVelocityChangeRate;
-
-            for (let i = 0; i < window.particles.length; i++) {
-                const p = window.particles[i];
-                const isSelected = selectedParticleIndices.has(i);
-
-                // If this particle is selected, and we're in the lining up phase, skip its instanced update
-                // It will be handled by its individual mesh in selectedParticleMeshes
-                if (isLiningUp && isSelected) {
-                    // Update individual mesh's position
-                    const selectedMesh = selectedParticleMeshes.find(mesh => mesh.userData.originalIndex === i);
-                    if (selectedMesh) {
-                        const elapsedTime = Date.now() - lineUpStartTime;
-                        let t = Math.min(1, elapsedTime / lineUpDuration);
-                        const selectedIndexInArray = selectedParticleMeshes.indexOf(selectedMesh);
-                        if (dynamicTargetParticlePositions[selectedIndexInArray]) {
-                            selectedMesh.position.lerp(dynamicTargetParticlePositions[selectedIndexInArray], t);
-                             // Keep text facing camera
-                            selectedMesh.children[0].lookAt(camera.position); // Text is child[0]
-                        }
-                    }
-                    continue; // Skip instanced update for selected particles during line-up
-                }
-
-                // Apply damping
-                p.velocity.multiplyScalar(damping);
-
-                if (isFloating) {
-                    // Gentle floating motion
-                    p.velocity.x += (Math.random() - 0.5) * galacticRandomMotion * 0.5;
-                    p.velocity.y += (Math.random() - 0.5) * galacticRandomMotion * 0.5;
-                    p.velocity.z += (Math.random() - 0.5) * galacticRandomMotion * 0.5;
-                    p.velocity.add(peculiarVelocity.clone().multiplyScalar(0.1)); // Reduced peculiar velocity for floating
-                    const cosmicExpansionForce = new THREE.Vector3().subVectors(p.position, center).normalize().multiplyScalar(cosmicExpansionFactor * 0.1);
-                    p.velocity.add(cosmicExpansionForce);
-
-                    // Keep initial purple color during floating
-                    dummyColor.setHSL(particleColorHue / 360, particleColorSaturation / 100, particleColorLightness / 100);
-                    instancedParticles.instanceColor.setXYZ(p.originalIndex, dummyColor.r, dummyColor.g, dummyColor.b);
-
-                } else if (isSwirling) {
-                    // Galactic swirl motion
-                    const directionFromCenter = new THREE.Vector3().subVectors(p.position, center);
-                    const distanceToCenter = directionFromCenter.length();
-
-                    // Gravitational Pull (inward)
-                    const gravitationalForce = directionFromCenter.normalize().multiplyScalar(-distanceToCenter * currentGravitationalPull);
-                    p.velocity.add(gravitationalForce);
-
-                    // Orbital Velocity (tangential)
-                    const axis = new THREE.Vector3(0, 1, 0); // Galactic plane is Y-axis for rotation
-                    const tangentialVelocity = axis.cross(directionFromCenter).normalize().multiplyScalar(distanceToCenter * currentOrbitalVelocityFactor);
-                    p.velocity.add(tangentialVelocity);
-
-                    // Random Galactic Motion
-                    p.velocity.x += (Math.random() - 0.5) * galacticRandomMotion;
-                    p.velocity.y += (Math.random() - 0.5) * galacticRandomMotion;
-                    p.velocity.z += (Math.random() - 0.5) * galacticRandomMotion;
-
-                    // Intergalactic Movement (Peculiar Velocities)
-                    p.velocity.add(peculiarVelocity);
-
-                    // Cosmic Expansion (subtle outward push)
-                    const cosmicExpansionForce = new THREE.Vector3().subVectors(p.position, center).normalize().multiplyScalar(cosmicExpansionFactor);
-                    p.velocity.add(cosmicExpansionForce);
-
-                    // Dynamic color shift during swirling
-                    dummyColor.setHSL(
-                        (particleColorHue / 360 + Math.sin(Date.now() * 0.0001 + i * 0.01) * 0.05) % 1,
-                        particleColorSaturation / 100,
-                        particleColorLightness / 100
-                    );
-                    instancedParticles.instanceColor.setXYZ(p.originalIndex, dummyColor.r, dummyColor.g, dummyColor.b);
-
-                    // Gradually increase swirl parameters during swirling phase
-                    currentOrbitalVelocityFactor = Math.min(maxOrbitalVelocityFactor, currentOrbitalVelocityFactor + swirlIncreaseRate);
-                    currentGravitationalPull = Math.min(maxGravitationalPull, currentGravitationalPull + swirlIncreaseRate * 0.1);
-
-                } else if (isClashing) { // This is the "explosion" phase where non-selected vanish
-                    if (isSelected) {
-                        // For selected particles, apply inward force
-                        const clashInwardForce = 0.005;
-                        const directionToCenter = new THREE.Vector3().subVectors(center, p.position).normalize();
-                        p.velocity.add(directionToCenter.multiplyScalar(clashInwardForce));
-
-                        // Keep selected particles vibrant
-                        dummyColor.setHSL(particleColorHue / 360, particleColorSaturation / 100, particleColorLightness / 100);
-                        instancedParticles.instanceColor.setXYZ(p.originalIndex, dummyColor.r, dummyColor.g, dummyColor.b);
-                    } else {
-                        // Non-selected particles are already scaled to zero in autoSelectLuckyParticles,
-                        // so no movement or color update is needed here for them.
-                    }
-                } else if (isLiningUp) {
-                    // Non-selected particles are already hidden
-                    if (isSelected) {
-                        // Keep selected particles vibrant during line up
-                        dummyColor.setHSL(particleColorHue / 360, particleColorSaturation / 100, particleColorLightness / 100);
-                        instancedParticles.instanceColor.setXYZ(p.originalIndex, dummyColor.r, dummyColor.g, dummyColor.b);
-                    }
-                }
-
-                const minContinuousSpeed = 0.0005;
-                // Apply min continuous speed only if not lining up AND not selected (or if floating)
-                if (!isLiningUp && p.velocity.length() < minContinuousSpeed) {
-                    p.velocity.x += (Math.random() - 0.5) * particleSpeedFactor * 0.5;
-                    p.velocity.y += (Math.random() - 0.5) * particleSpeedFactor * 0.5;
-                    p.velocity.z += (Math.random() - 0.5) * particleSpeedFactor * 0.5;
-                }
-
-                p.position.add(p.velocity);
-
-                const halfBox = boxSize / 2;
-                let collided = false;
-
-                if (p.position.x + particleRadius > halfBox) {
-                    p.velocity.x *= -1;
-                    p.position.x = halfBox - particleRadius;
-                    collided = true;
-                } else if (p.position.x - particleRadius < -halfBox) {
-                    p.velocity.x *= -1;
-                    p.position.x = -halfBox + particleRadius;
-                    collided = true;
-                }
-
-                if (p.position.y + particleRadius > halfBox) {
-                    p.velocity.y *= -1;
-                    p.position.y = halfBox - particleRadius;
-                    collided = true;
-                } else if (p.position.y - particleRadius < -halfBox) {
-                    p.velocity.y *= -1;
-                    p.position.y = -halfBox + particleRadius;
-                    collided = true;
-                }
-
-                if (p.position.z + particleRadius > halfBox) {
-                    p.velocity.z *= -1;
-                    p.position.z = halfBox - particleRadius;
-                    collided = true;
-                } else if (p.position.z - particleRadius < -halfBox) {
-                    p.velocity.z *= -1;
-                    p.position.z = -halfBox + particleRadius;
-                    collided = true;
-                }
-
-                // Change color if collision occurred (only before selection)
-                if (collided && !window.luckyParticleSelected) {
-                    // Generate a new random color for collision with wider range for vibrancy
-                    dummyColor.setHSL(Math.random(), 0.8 + Math.random() * 0.2, 0.6 + Math.random() * 0.2);
-                    instancedParticles.instanceColor.setXYZ(p.originalIndex, dummyColor.r, dummyColor.g, dummyColor.b);
-                }
-
-                // Update the instance matrix for the current particle
-                // Only update instanced mesh if not lining up, or if it's a non-selected particle
-                // (selected particles in lining up phase are handled by individual meshes)
-                if (!isLiningUp || (isLiningUp && !isSelected)) {
-                    dummy.position.copy(p.position);
-                    // If it's a non-selected particle during the explosion phase, its scale is already zeroed out.
-                    // This ensures it remains hidden.
-                    dummy.updateMatrix();
-                    instancedParticles.setMatrixAt(p.originalIndex, dummy.matrix);
-                }
-            }
-            instancedParticles.instanceMatrix.needsUpdate = true;
-            instancedParticles.instanceColor.needsUpdate = true;
-        }
-
-        function onWindowResize() {
-            const canvasElement = document.getElementById('particleCanvas');
-            const newWidth = Math.min(window.innerWidth * 0.8, 1536);
-            const newHeight = Math.min(window.innerHeight * 0.7, 864);
-
-            canvasElement.style.width = `${newWidth}px`;
-            canvasElement.style.height = `${newHeight}px`;
-
-            camera.aspect = newWidth / newHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(newWidth, newHeight);
-
-            if (sidebar.classList.contains('open')) {
-                document.querySelector('.game-content').style.paddingLeft = '280px';
-            } else {
-                document.querySelector('.game-content').style.paddingLeft = '0';
-            }
-        }
-
-        window.updateInitialCameraZoom = function(value) {
-            cameraRadius = parseFloat(value);
-            // Recalculate camera position based on updated spherical coordinates and new radius
-            camera.position.x = cameraRadius * Math.sin(cameraTheta) * Math.sin(cameraPhi);
-            camera.position.y = cameraRadius * Math.cos(cameraTheta);
-            camera.position.z = cameraRadius * Math.sin(cameraTheta) * Math.cos(cameraPhi);
-            camera.updateProjectionMatrix();
-        }
-
-        maxNumberInput.addEventListener('change', function() {
-            const newMax = parseInt(this.value);
-            if (isNaN(newMax) || newMax < numberOfSelectedParticles) {
-                this.value = maxParticleNumber;
-                this.classList.add('invalid');
-                setTimeout(() => this.classList.remove('invalid'), 1500);
-                window.showMessageBox(translations[currentLanguage].messageInvalidNumberInput.replace('{minParticles}', numberOfSelectedParticles));
-                return;
-            }
-            maxParticleNumber = newMax;
-            window.restartSimulation();
-        });
-
-        numLuckyNumbersInput.addEventListener('change', function() {
-            const newNum = parseInt(this.value);
-            if (isNaN(newNum) || newNum < 1 || newNum > 10) {
-                this.value = numberOfSelectedParticles;
-                this.classList.add('invalid');
-                setTimeout(() => this.classList.remove('invalid'), 1500);
-                window.showMessageBox(translations[currentLanguage].messageInvalidLuckyNumberInput.replace('{min}', 1).replace('{max}', 10));
-                return;
-            }
-            numberOfSelectedParticles = newNum;
-        });
-
-        function displayLuckyNumbersOnly(selectedNumbersString) {
-            const t = translations[currentLanguage];
-            const message = `
-                <p style="font-weight: bold; font-size: 1.5em; margin-bottom: 1em;">${t.messageLuckyNumbers} ${selectedNumbersString}</p>
-            `;
-            window.showMessageBox(message);
-        }
-
-        function newGame() {
-            window.hideMessageBox();
-            window.restartSimulation();
-            sidebar.classList.add('open');
-            document.querySelector('.game-content').style.paddingLeft = '280px';
-        }
-
-        window.startLuckyDraw = function() {
-            if (isClashing || isLiningUp) { // Only check clashing and lining up, allow restart from swirling
-                window.restartSimulation();
-                return;
-            }
-            isFloating = false;
-            isSwirling = true; // Swirling starts immediately
-            statusOutput.textContent = translations[currentLanguage].statusSwirling;
-            startButton.textContent = translations[currentLanguage].startButtonDrawing;
-            startButton.disabled = true;
-
-            // After swirlDuration, transition to clash/explosion phase
-            setTimeout(() => {
-                isSwirling = false;
-                isClashing = true; // This now signifies the explosion phase
-                clashStartTime = Date.now(); // Reuse clashStartTime for explosion timing
-                statusOutput.textContent = translations[currentLanguage].statusClashing; // Status for explosion
-
-                // Trigger auto-selection and start explosion effect
-                window.autoSelectLuckyParticles();
-            }, swirlDuration); // Use the longer swirlDuration
-        };
-
-        window.autoSelectLuckyParticles = function() {
-            if (window.particles.length === 0) {
-                window.showMessageBox(translations[currentLanguage].messageNoParticles);
-                startButton.disabled = false;
-                startButton.textContent = translations[currentLanguage].startButton;
-                return;
-            }
-
-            selectedParticleIndices.clear();
-            selectedParticleMeshes.forEach(p => { // Remove previous individual meshes
-                scene.remove(p); // Remove from scene
-                p.geometry.dispose();
-                p.material.dispose();
-                if (p.children.length > 0 && p.children[0].isMesh) {
-                    p.children[0].geometry.dispose();
-                    p.children[0].material.dispose();
-                }
-            });
-            selectedParticleMeshes = [];
-
-            const availableIndices = Array.from({ length: window.particles.length }, (_, i) => i);
-            dynamicTargetParticlePositions = generateTargetParticlePositions(numberOfSelectedParticles);
-
-            for (let i = 0; i < numberOfSelectedParticles; i++) {
-                if (availableIndices.length === 0) break;
-
-                const randomIndex = Math.floor(Math.random() * availableIndices.length);
-                const particleOriginalIndex = availableIndices.splice(randomIndex, 1)[0];
-                const p = window.particles[particleOriginalIndex];
-
-                selectedParticleIndices.add(particleOriginalIndex); // Mark as selected
-
-                // Create a new individual mesh for the selected particle
-                const selectedMeshGeometry = new THREE.SphereGeometry(particleRadius, 16, 16);
-                const selectedMeshMaterial = new THREE.MeshBasicMaterial({ color: initialParticleColor.clone() });
-                const selectedMesh = new THREE.Mesh(selectedMeshGeometry, selectedMeshMaterial);
-                selectedMesh.position.copy(p.position); // Copy current position
-                selectedMesh.userData.originalIndex = particleOriginalIndex; // Store original index for lookup
-
-                // Add text mesh
-                const textTexture = createTextTexture(String(p.number), 'white', 128);
-                const textMaterial = new THREE.MeshBasicMaterial({ map: textTexture, transparent: true, side: THREE.DoubleSide });
-                const textScaleFactor = 0.5;
-                const textGeometry = new THREE.PlaneGeometry(
-                    textTexture.image.width / 100 * textScaleFactor,
-                    textTexture.image.height / 100 * textScaleFactor
-                );
-                const textMesh = new THREE.Mesh(textGeometry, textMaterial);
-                textMesh.position.z = particleRadius + 0.1;
-                selectedMesh.add(textMesh);
-
-                scene.add(selectedMesh); // Add to scene
-                selectedParticleMeshes.push(selectedMesh);
-            }
-
-            // Hide non-selected particles by scaling them to zero immediately after selection
-            for (let i = 0; i < window.particles.length; i++) {
-                const p = window.particles[i];
-                if (!selectedParticleIndices.has(i)) {
-                    dummy.position.copy(p.position); // Keep position for consistency, but scale to 0
-                    dummy.scale.set(0, 0, 0); // Scale to zero to hide
-                    dummy.updateMatrix();
-                    instancedParticles.setMatrixAt(p.originalIndex, dummy.matrix);
-                } else {
-                    // For selected particles, ensure they are visible (scale 1)
-                    dummy.position.copy(p.position);
-                    dummy.scale.set(1, 1, 1);
-                    dummy.updateMatrix();
-                    instancedParticles.setMatrixAt(p.originalIndex, dummy.matrix);
-                }
-            }
-            instancedParticles.instanceMatrix.needsUpdate = true;
-
-            window.luckyParticleSelected = true; // This flag prevents further collision color changes
-
-            const selectedNumbers = Array.from(selectedParticleIndices).map(index => window.particles[index].number).join(', ');
-            
-            // Transition from clash/explosion to lining up after explosionDuration
-            setTimeout(() => {
-                isClashing = false; // Explosion phase ends
-                isLiningUp = true;
-                lineUpStartTime = Date.now();
-                statusOutput.textContent = translations[currentLanguage].statusSelected;
-
-                setTimeout(() => {
-                    isLiningUp = false;
-                    displayLuckyNumbersOnly(selectedNumbers);
-                    startButton.disabled = false;
-                    startButton.textContent = translations[currentLanguage].startButton;
-                }, lineUpDuration);
-            }, explosionDuration); // Use explosionDuration here
-        };
-
-        window.restartSimulation = function() {
-            console.log("restartSimulation: Initiating restart.");
-            clearInterval(countdownInterval);
-            
-            isFloating = true;
-            isSwirling = false;
-            isClashing = false;
-            isLiningUp = false;
-            window.luckyParticleSelected = false;
-
-            startButton.disabled = false;
-            startButton.textContent = translations[currentLanguage].startButton;
-
-            initParticles(); // Re-initialize particles and scene
-            console.log("restartSimulation: initParticles called.");
-
-            // Reset camera position
-            camera.position.x = cameraRadius * Math.sin(cameraTheta) * Math.sin(cameraPhi);
-            camera.position.y = cameraRadius * Math.cos(cameraTheta);
-            camera.position.z = cameraRadius * Math.sin(cameraTheta) * Math.cos(cameraPhi);
-            camera.lookAt(0, 0, 0);
-            console.log("restartSimulation: Camera reset.");
-        };
-
-        function toggleSidebar() {
-            sidebar.classList.toggle('open');
-            if (sidebar.classList.contains('open')) {
-                document.querySelector('.game-content').style.paddingLeft = '280px';
-            } else {
-                document.querySelector('.game-content').style.paddingLeft = '0';
-            }
-        }
-
+        // Initialize performance monitoring in window.onload
         window.onload = async function() {
             console.log("window.onload: Starting initialization.");
             
@@ -1162,6 +899,9 @@
             numberOfSelectedParticles = parseInt(numLuckyNumbersInput.value);
 
             initThreeJS();
+            initKeyboardControls();
+            initHighContrastMode();
+            initPerformanceMonitoring(); // Add performance monitoring
             onWindowResize();
 
             startButton.addEventListener('click', window.startLuckyDraw);

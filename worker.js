@@ -55,14 +55,19 @@ function updateParticlePhysics(params, phase, time, lineUpStartTime, lineUpDurat
     // Pre-calculate common values
     const halfBox = params.boxSize / 2;
     const peculiarDelta = (Math.random() - 0.5) * params.peculiarVelocityChangeRate;
+
+    // Transition factors for smooth animations
+    let transitionFactor = 1;
+    if (phase === 'clashing') {
+        transitionFactor = Math.min(1, (time - params.clashStartTime) / params.explosionDuration);
+    } else if (phase === 'liningUp') {
+        transitionFactor = Math.min(1, (time - lineUpStartTime) / lineUpDuration);
+    }
     
     // Update each particle
     for (let i = 0; i < particleCount; i++) {
         const baseIndex = i * PARTICLE_STRIDE;
         const isSelected = selectedIndices.includes(i);
-
-        // Skip selected particles during lineup phase
-        if (phase === 'liningUp' && isSelected) continue;
 
         // Apply damping to velocity
         for (let d = 0; d < PARTICLE_STRIDE; d++) {
@@ -74,12 +79,23 @@ function updateParticlePhysics(params, phase, time, lineUpStartTime, lineUpDurat
             case 'floating':
                 applyFloatingPhysics(baseIndex, params);
                 break;
+
             case 'swirling':
                 applySwirlPhysics(baseIndex, params, center);
                 break;
+
             case 'clashing':
                 if (isSelected) {
-                    applyClashPhysics(baseIndex, params, center);
+                    applyClashPhysics(baseIndex, params, center, transitionFactor);
+                } else {
+                    // Non-selected particles fade away
+                    applyFadeAwayPhysics(baseIndex, params, transitionFactor);
+                }
+                break;
+
+            case 'liningUp':
+                if (isSelected) {
+                    applyLineUpPhysics(baseIndex, i, params, dynamicTargetParticlePositions, transitionFactor);
                 }
                 break;
         }
@@ -90,16 +106,21 @@ function updateParticlePhysics(params, phase, time, lineUpStartTime, lineUpDurat
 }
 
 function applyFloatingPhysics(baseIndex, params) {
-    // Gentle floating motion with optimized calculations
+    // Enhanced floating motion with smoother transitions
+    const randomForce = Math.random() * 2 - 1;
+    const baseForce = params.galacticRandomMotion * 0.3;
+
     for (let d = 0; d < PARTICLE_STRIDE; d++) {
+        // Add smooth random motion
         particleVelocities[baseIndex + d] += 
-            ((Math.random() - 0.5) * params.galacticRandomMotion * 0.5) +
+            (randomForce * baseForce) +
             (params.peculiarVelocity[d] * 0.1);
         
-        // Simplified cosmic expansion
+        // Enhanced cosmic expansion with distance-based scaling
         const pos = particlePositions[baseIndex + d];
-        const expansionForce = (pos / Math.max(Math.abs(pos), 1)) * params.cosmicExpansionFactor * 0.1;
-        particleVelocities[baseIndex + d] += expansionForce;
+        const distanceFromCenter = Math.abs(pos);
+        const scaledExpansion = params.cosmicExpansionFactor * (distanceFromCenter / params.boxSize);
+        particleVelocities[baseIndex + d] += pos * scaledExpansion;
     }
 }
 
@@ -124,43 +145,75 @@ function applySwirlPhysics(baseIndex, params, center) {
     ) || 1;
 
     // Normalize direction
-    direction[0] /= distance;
-    direction[1] /= distance;
-    direction[2] /= distance;
-
-    // Apply forces
     for (let d = 0; d < PARTICLE_STRIDE; d++) {
-        // Gravitational pull
-        particleVelocities[baseIndex + d] -= direction[d] * distance * params.currentGravitationalPull;
+        direction[d] /= distance;
+    }
+
+    // Enhanced swirl effect
+    for (let d = 0; d < PARTICLE_STRIDE; d++) {
+        // Stronger gravitational pull
+        particleVelocities[baseIndex + d] -= direction[d] * distance * params.currentGravitationalPull * 1.5;
         
-        // Orbital velocity (simplified cross product with up vector)
-        const tangentialForce = d === 0 ? direction[2] : (d === 2 ? -direction[0] : 0);
-        particleVelocities[baseIndex + d] += tangentialForce * distance * params.currentOrbitalVelocityFactor;
+        // Enhanced orbital velocity with vertical component
+        const tangentialForce = d === 0 ? direction[2] : (d === 2 ? -direction[0] : direction[1] * 0.5);
+        particleVelocities[baseIndex + d] += tangentialForce * distance * params.currentOrbitalVelocityFactor * 1.2;
         
-        // Random motion
-        particleVelocities[baseIndex + d] += (Math.random() - 0.5) * params.galacticRandomMotion;
+        // Controlled random motion for visual interest
+        particleVelocities[baseIndex + d] += (Math.random() - 0.5) * params.galacticRandomMotion * 0.8;
     }
 }
 
-function applyClashPhysics(baseIndex, params, center) {
-    const clashInwardForce = 0.005;
+function applyClashPhysics(baseIndex, params, center, transitionFactor) {
+    const clashForce = 0.008 * transitionFactor;
+    const randomSpread = 0.002 * (1 - transitionFactor);
+
     for (let d = 0; d < PARTICLE_STRIDE; d++) {
-        const toCenter = -particlePositions[baseIndex + d];
-        particleVelocities[baseIndex + d] += toCenter * clashInwardForce;
+        const toCenter = center[d] - particlePositions[baseIndex + d];
+        particleVelocities[baseIndex + d] += toCenter * clashForce;
+        particleVelocities[baseIndex + d] += (Math.random() - 0.5) * randomSpread;
+    }
+}
+
+function applyFadeAwayPhysics(baseIndex, params, transitionFactor) {
+    // Particles spiral outward and fade
+    const spiralForce = 0.01 * transitionFactor;
+    const outwardForce = 0.005 * transitionFactor;
+
+    for (let d = 0; d < PARTICLE_STRIDE; d++) {
+        const pos = particlePositions[baseIndex + d];
+        const spiral = d === 0 ? pos : (d === 2 ? -pos : 0);
+        particleVelocities[baseIndex + d] += spiral * spiralForce;
+        particleVelocities[baseIndex + d] += pos * outwardForce;
+    }
+}
+
+function applyLineUpPhysics(baseIndex, particleIndex, params, targetPositions, transitionFactor) {
+    if (!targetPositions || particleIndex >= targetPositions.length) return;
+
+    const target = targetPositions[particleIndex];
+    const lineUpForce = 0.1 * transitionFactor;
+    const stabilizationForce = 0.02 * transitionFactor;
+
+    for (let d = 0; d < PARTICLE_STRIDE; d++) {
+        const toTarget = (target[d] || 0) - particlePositions[baseIndex + d];
+        particleVelocities[baseIndex + d] += toTarget * lineUpForce;
+        particleVelocities[baseIndex + d] *= (1 - stabilizationForce); // Dampen velocity for stability
     }
 }
 
 function handleBoundaryCollisions(baseIndex, halfBox, particleRadius) {
-    // Update positions
+    const bounceFactor = 0.8; // Slightly inelastic collisions for more natural behavior
+
     for (let d = 0; d < PARTICLE_STRIDE; d++) {
+        // Update position
         particlePositions[baseIndex + d] += particleVelocities[baseIndex + d];
         
-        // Boundary collisions
+        // Enhanced boundary collisions with smoother bouncing
         if (particlePositions[baseIndex + d] + particleRadius > halfBox) {
-            particleVelocities[baseIndex + d] *= -1;
+            particleVelocities[baseIndex + d] *= -bounceFactor;
             particlePositions[baseIndex + d] = halfBox - particleRadius;
         } else if (particlePositions[baseIndex + d] - particleRadius < -halfBox) {
-            particleVelocities[baseIndex + d] *= -1;
+            particleVelocities[baseIndex + d] *= -bounceFactor;
             particlePositions[baseIndex + d] = -halfBox + particleRadius;
         }
     }

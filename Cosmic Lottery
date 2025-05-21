@@ -30,6 +30,11 @@
             width: 90vw; /* Responsive width */
             height: 70vh; /* Responsive height, leaving space for controls/output */
             margin-bottom: 1rem; /* Space between canvas and controls */
+            cursor: grab; /* Indicate draggable element */
+        }
+
+        canvas:active {
+            cursor: grabbing; /* Indicate dragging in progress */
         }
 
         /* Controls and output area */
@@ -238,9 +243,6 @@
             document.getElementById('messageBox').style.display = 'none';
         };
 
-        // --- Configurable Parameters ---
-        const COUNTDOWN_SECONDS = 10; // Set countdown to 10 seconds for a more dramatic effect
-
         // --- Three.js Setup ---
         // `window.particles` is now declared globally in a separate script tag above.
         let scene, camera, renderer, cubeWireframe;
@@ -276,10 +278,15 @@
         window.rotationSpeed = 0.005;
         window.autoRotationSpeed = 0.0005; // Reduced for slower automatic cube rotation
 
+        // Mouse interaction for dragging
+        let isDragging = false;
+        let previousMouseX = 0;
+        let previousMouseY = 0;
+
         // Lucky particle selection variables
         const numberOfSelectedParticles = 6;
         let selectedParticlesArray = [];
-        let countdownValue = COUNTDOWN_SECONDS;
+        let countdownValue = 10; // Increased countdown value for longer selection process
     
         let countdownInterval;
         let countdownDisplay;
@@ -289,6 +296,28 @@
         let explosionActive = false; // Flag for explosive reveal
         let explosionStartTime = 0; // To track when the explosion started
         const explosionDuration = 1500; // 1.5 seconds for the explosion fade animation
+
+        // New variables for lining up and camera zoom
+        let isLiningUp = false;
+        let lineUpStartTime = 0;
+        const lineUpDuration = 2000; // 2 seconds for particles to line up and camera to zoom
+        let initialCameraZForLineUp;
+        const targetCameraZ = 60; // Closer zoom for lined-up particles
+        // Target positions for the 6 selected particles to line up horizontally in the center
+        const targetParticlePositions = [
+            new THREE.Vector3(-50, 0, 0),
+            new THREE.Vector3(-30, 0, 0),
+            new THREE.Vector3(-10, 0, 0),
+            new THREE.Vector3(10, 0, 0),
+            new THREE.Vector3(30, 0, 0),
+            new THREE.Vector3(50, 0, 0)
+        ];
+
+        // Global particle color definition
+        const particleColorHue = 270; // Default to purple-ish
+        const particleColorSaturation = 70; // Default saturation
+        const particleColorLightness = 60; // Default lightness
+
 
         // Initialize Three.js scene, camera, renderer
         function initThreeJS() {
@@ -326,7 +355,41 @@
 
             window.addEventListener('resize', onWindowResize, false);
 
+            // Mouse interaction event listeners
+            const canvasElement = document.getElementById('particleCanvas');
+            canvasElement.addEventListener('mousedown', onMouseDown, false);
+            canvasElement.addEventListener('mousemove', onMouseMove, false);
+            canvasElement.addEventListener('mouseup', onMouseUp, false);
+            canvasElement.addEventListener('mouseleave', onMouseUp, false); // Treat mouse leaving as mouse up
+
             animate();
+        }
+
+        // Mouse event handlers
+        function onMouseDown(event) {
+            isDragging = true;
+            previousMouseX = event.clientX;
+            previousMouseY = event.clientY;
+            event.preventDefault(); // Prevent default browser drag behavior
+        }
+
+        function onMouseMove(event) {
+            if (!isDragging) return;
+
+            const deltaX = event.clientX - previousMouseX;
+            const deltaY = event.clientY - previousMouseY;
+
+            // Rotate the scene based on mouse movement
+            // Adjust sensitivity as needed
+            scene.rotation.y += deltaX * 0.005; // Rotate around Y-axis for horizontal drag
+            scene.rotation.x += deltaY * 0.005; // Rotate around X-axis for vertical drag
+
+            previousMouseX = event.clientX;
+            previousMouseY = event.clientY;
+        }
+
+        function onMouseUp(event) {
+            isDragging = false;
         }
 
         // Function to create a CanvasTexture for text
@@ -372,6 +435,7 @@
             selectedParticlesArray = []; // Reset selected particles array
             window.luckyParticleSelected = false; // Reset flag
             explosionActive = false; // Reset explosion flag
+            isLiningUp = false; // Reset lining up flag
             document.getElementById('statusOutput').textContent = 'Press Start to begin the Lucky Draw!'; // Reset status text
 
             // Reset dynamic swirl parameters
@@ -382,13 +446,6 @@
 
             const center = new THREE.Vector3(0, 0, 0);
             const sphereGeometry = new THREE.SphereGeometry(particleRadius, 16, 16);
-
-            // Define particleColorHue, particleColorSaturation, particleColorLightness
-            // These were not defined in the previous version, leading to errors.
-            // Setting default values or ensuring they are defined.
-            const particleColorHue = 270; // Default to purple-ish
-            const particleColorSaturation = 70; // Default saturation
-            const particleColorLightness = 60; // Default lightness
 
             initialParticleColor.setHSL(particleColorHue / 360, particleColorSaturation / 100, particleColorLightness / 100);
 
@@ -462,8 +519,8 @@
 
             updateParticles();
 
-            // Automatic cube rotation if no lucky particle is selected
-            if (!window.luckyParticleSelected) {
+            // Automatic cube rotation only if not dragging and not lining up
+            if (!window.luckyParticleSelected && !isDragging && !isLiningUp) {
                 cubeWireframe.rotation.y += window.autoRotationSpeed;
                 scene.rotation.y += window.autoRotationSpeed;
 
@@ -502,8 +559,8 @@
                 // Apply damping
                 p.velocity.multiplyScalar(damping);
 
-                // Apply dynamic forces if not selected
-                if (!window.luckyParticleSelected && window.simulationStarted) {
+                // Apply dynamic forces if not selected and not lining up
+                if (!window.luckyParticleSelected && window.simulationStarted && !isLiningUp) {
                     const directionFromCenter = new THREE.Vector3().subVectors(p.mesh.position, center).normalize();
                     const distanceToCenter = p.mesh.position.length(); // Use length for distance to center
 
@@ -530,11 +587,6 @@
                     const cosmicExpansionForce = directionFromCenter.clone().multiplyScalar(cosmicExpansionFactor);
                     p.velocity.add(cosmicExpansionForce);
 
-                    // Define particleColorHue, particleColorSaturation, particleColorLightness
-                    const particleColorHue = 270; // Default to purple-ish
-                    const particleColorSaturation = 70; // Default saturation
-                    const particleColorLightness = 60; // Default lightness
-
                     // Dynamic color shift during swirl
                     p.mesh.material.color.setHSL(
                         (particleColorHue / 360 + Math.sin(Date.now() * 0.0001 + i * 0.01) * 0.05) % 1, // Subtle hue shift
@@ -544,16 +596,32 @@
                 } else if (window.luckyParticleSelected) {
                     // Once selected, keep selected particles' colors vibrant
                     if (isSelected) {
-                        const particleColorHue = 270; // Default to purple-ish
-                        const particleColorSaturation = 70; // Default saturation
-                        const particleColorLightness = 60; // Default lightness
                         p.mesh.material.color.setHSL(particleColorHue / 360, particleColorSaturation / 100, particleColorLightness / 100);
                     }
                 }
 
-                // Ensure minimum speed for continuous floating
+                // Handle lining up animation for selected particles
+                if (isLiningUp && isSelected) {
+                    const elapsedTime = Date.now() - lineUpStartTime;
+                    let t = Math.min(1, elapsedTime / lineUpDuration); // Animation progress (0 to 1)
+
+                    const selectedIndex = selectedParticlesArray.indexOf(p);
+                    if (selectedIndex !== -1 && targetParticlePositions[selectedIndex]) {
+                        // Interpolate position
+                        p.mesh.position.lerp(targetParticlePositions[selectedIndex], t);
+                        // Stop particle's own velocity once lining up starts
+                        p.velocity.set(0, 0, 0);
+                    }
+                } else if (isLiningUp && !isSelected) {
+                    // If lining up, and not selected, ensure non-selected particles are fully hidden
+                    p.mesh.material.opacity = 0;
+                    p.mesh.visible = false;
+                }
+
+
+                // Ensure minimum speed for continuous floating (only if not lining up)
                 const minContinuousSpeed = 0.0005; // Define locally if not global
-                if (p.velocity.length() < minContinuousSpeed) {
+                if (!isLiningUp && p.velocity.length() < minContinuousSpeed) {
                     p.velocity.x += (Math.random() - 0.5) * particleSpeedFactor * 0.5;
                     p.velocity.y += (Math.random() - 0.5) * particleSpeedFactor * 0.5;
                     p.velocity.z += (Math.random() - 0.5) * particleSpeedFactor * 0.5;
@@ -565,19 +633,36 @@
                 const halfBox = boxSize / 2;
                 let collided = false;
 
-                if (p.mesh.position.x + particleRadius > halfBox || p.mesh.position.x - particleRadius < -halfBox) {
+                // Check and clamp position for X-axis
+                if (p.mesh.position.x + particleRadius > halfBox) {
                     p.velocity.x *= -1;
-                    p.mesh.position.x = Math.max(-halfBox + particleRadius, Math.min(halfBox - particleRadius, p.mesh.position.x));
+                    p.mesh.position.x = halfBox - particleRadius;
+                    collided = true;
+                } else if (p.mesh.position.x - particleRadius < -halfBox) {
+                    p.velocity.x *= -1;
+                    p.mesh.position.x = -halfBox + particleRadius;
                     collided = true;
                 }
-                if (p.mesh.position.y + particleRadius > halfBox || p.mesh.position.y - particleRadius < -halfBox) {
+
+                // Check and clamp position for Y-axis
+                if (p.mesh.position.y + particleRadius > halfBox) {
                     p.velocity.y *= -1;
-                    p.mesh.position.y = Math.max(-halfBox + particleRadius, Math.min(halfBox - particleRadius, p.mesh.position.y));
+                    p.mesh.position.y = halfBox - particleRadius;
+                    collided = true;
+                } else if (p.mesh.position.y - particleRadius < -halfBox) {
+                    p.velocity.y *= -1;
+                    p.mesh.position.y = -halfBox + particleRadius;
                     collided = true;
                 }
-                if (p.mesh.position.z + particleRadius > halfBox || p.mesh.position.z - particleRadius < -halfBox) {
+
+                // Check and clamp position for Z-axis
+                if (p.mesh.position.z + particleRadius > halfBox) {
                     p.velocity.z *= -1;
-                    p.mesh.position.z = Math.max(-halfBox + particleRadius, Math.min(halfBox - particleRadius, p.mesh.position.z));
+                    p.mesh.position.z = halfBox - particleRadius;
+                    collided = true;
+                } else if (p.mesh.position.z - particleRadius < -halfBox) {
+                    p.velocity.z *= -1;
+                    p.mesh.position.z = -halfBox + particleRadius;
                     collided = true;
                 }
 
@@ -590,6 +675,14 @@
                     newColor.setHSL(newHue, newSaturation, newLightness);
                     p.mesh.material.color.copy(newColor);
                 }
+            }
+
+            // Camera zoom animation during lining up
+            if (isLiningUp) {
+                const elapsedTime = Date.now() - lineUpStartTime;
+                let t = Math.min(1, elapsedTime / lineUpDuration);
+                camera.position.z = THREE.MathUtils.lerp(initialCameraZForLineUp, targetCameraZ, t);
+                camera.lookAt(0, 0, 0); // Keep camera focused on the center
             }
         }
 
@@ -629,7 +722,7 @@
         window.startCountdown = function() {
             clearInterval(countdownInterval);
             countdownDisplay.style.display = 'block';
-            countdownValue = COUNTDOWN_SECONDS;
+            countdownValue = 10; // Set countdown to 10 seconds
             countdownDisplay.textContent = countdownValue;
 
             countdownInterval = setInterval(() => {
@@ -645,6 +738,18 @@
                 }
             }, 1000);
         };
+
+        // New function to start the lining up animation and camera zoom
+        function startLiningUpAnimation(selectedNumbers, sumOfNumbers) {
+            isLiningUp = true;
+            lineUpStartTime = Date.now();
+            initialCameraZForLineUp = camera.position.z; // Store current camera Z before zooming
+
+            setTimeout(() => {
+                isLiningUp = false; // End lining up animation
+                displayNumerologyFortune(sumOfNumbers, selectedNumbers); // Display fortune after animation
+            }, lineUpDuration);
+        }
 
         // Expose autoSelectLuckyParticles to the global scope
         window.autoSelectLuckyParticles = function() {
@@ -701,9 +806,9 @@
             
             // Delay displaying the numerology fortune until after the explosion animation
             setTimeout(() => {
-                displayNumerologyFortune(sumOfNumbers, selectedNumbers);
                 explosionActive = false; // Stop explosion logic after duration
                 countdownDisplay.style.display = 'none'; // Hide the "GO!" text
+                startLiningUpAnimation(selectedNumbers, sumOfNumbers); // Start lining up and camera zoom
             }, explosionDuration);
         };
 
@@ -711,9 +816,10 @@
         window.restartSimulation = function() {
             clearInterval(countdownInterval);
             countdownDisplay.style.display = 'none';
-            countdownValue = 3;
+            countdownValue = 10; // Reset countdown for restart
             window.simulationStarted = false;
             explosionActive = false;
+            isLiningUp = false; // Reset lining up flag
 
             initParticles(); // Re-initialize particles and scene
 

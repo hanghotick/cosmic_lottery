@@ -12,7 +12,7 @@
             font-family: "Inter", sans-serif;
             margin: 0;
             overflow: hidden; /* Prevent scrollbars */
-            background-color: #0d0d1a; /* Very dark background */
+            background-color: #000000; /* Deep black background from image */
             display: flex;
             flex-direction: column; /* Arrange items vertically */
             justify-content: center;
@@ -24,17 +24,12 @@
 
         canvas {
             display: block;
-            background-color: #0d0d1a; /* Match body background */
+            background-color: #000000; /* Match body background from image */
             border-radius: 1rem; /* Rounded corners for the canvas */
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); /* Subtle shadow */
             width: 90vw; /* Responsive width */
             height: 70vh; /* Responsive height, leaving space for controls/output */
             margin-bottom: 1rem; /* Space between canvas and controls */
-            cursor: grab; /* Indicate draggable */
-        }
-
-        canvas.grabbing {
-            cursor: grabbing; /* Indicate dragging */
         }
 
         /* Controls and output area */
@@ -48,26 +43,7 @@
             align-items: center;
             width: 90vw; /* Match canvas width */
             max-width: 800px; /* Max width for larger screens */
-        }
-
-        .input-group {
-            display: flex;
-            gap: 0.5rem;
-            width: 100%;
-            margin-bottom: 1rem;
-            justify-content: center; /* Center the input and button */
-            flex-wrap: wrap; /* Allow wrapping on small screens */
-        }
-
-        .input-group input[type="text"] {
-            flex-grow: 1; /* Allow input to take available space */
-            padding: 0.75rem;
-            border-radius: 0.5rem;
-            border: 1px solid #4a4a6a;
-            background-color: #2a2a4a;
-            color: #e0e0e0;
-            font-size: 1rem;
-            max-width: 60%; /* Limit input width */
+            margin-top: 1rem; /* Space above controls */
         }
 
         .action-button {
@@ -79,6 +55,7 @@
             cursor: pointer;
             font-size: 1rem;
             transition: background-color 0.3s ease, transform 0.1s ease;
+            margin-bottom: 0.75rem; /* Space between buttons */
         }
 
         .action-button:hover {
@@ -90,7 +67,18 @@
             transform: translateY(0);
         }
 
-        .llm-output {
+        #startButton {
+            font-size: 1.2rem;
+            padding: 1rem 2rem;
+            margin-bottom: 1.5rem;
+            background-color: #00bfff; /* Brighter blue for start button */
+        }
+
+        #startButton:hover {
+            background-color: #00aacc;
+        }
+
+        #statusOutput {
             background-color: #2a2a4a;
             color: #e0e0e0;
             padding: 1rem;
@@ -104,6 +92,7 @@
             align-items: center; /* Center vertically */
             justify-content: center; /* Center horizontally */
             word-break: break-word; /* Ensure long words break */
+            margin-top: 1rem;
         }
 
         /* Message box styling */
@@ -112,15 +101,19 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background-color: rgba(0, 0, 0, 0.8);
+            background-color: rgba(0, 0, 0, 0.9); /* Darker overlay */
             color: white;
-            padding: 1.5rem;
-            border-radius: 0.75rem;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            padding: 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.7);
             z-index: 1000;
             display: none; /* Hidden by default */
             text-align: center;
             font-size: 1.1rem;
+            max-width: 90vw; /* Responsive width */
+            max-height: 90vh; /* Responsive height */
+            overflow-y: auto; /* Scroll if content is too long */
+            border: 2px solid #6a05ad; /* Purple border */
         }
 
         .message-box button {
@@ -130,7 +123,7 @@
             border: none;
             border-radius: 0.5rem;
             cursor: pointer;
-            margin-top: 1rem;
+            margin-top: 1.5rem;
             transition: background-color 0.3s ease;
         }
 
@@ -196,25 +189,28 @@
             z-index: 1001; /* Above everything else */
             display: none; /* Hidden by default */
         }
+
+        /* Lucky History Styling - Removed */
     </style>
 </head>
 <body>
+    <script>
+        // Global declaration of window.particles to ensure it's available before module scripts
+        window.particles = [];
+        console.log("Global script: window.particles initialized to:", window.particles);
+    </script>
+
     <canvas id="particleCanvas"></canvas>
 
     <div class="controls-output-container">
-        <div class="input-group">
-            <input type="text" id="moodInput" placeholder="Enter a mood (e.g., 'calm', 'energetic')">
-            <button class="action-button" onclick="applyMoodToParticles()">✨ Apply Mood ✨</button>
-        </div>
         <div class="slider-group">
             <label for="zoomSlider">Initial Zoom:</label>
             <input type="range" id="zoomSlider" min="100" max="500" value="160" oninput="updateInitialCameraZoom(this.value)">
         </div>
-        <button class="action-button" onclick="restartSimulation()">🔄 Restart Simulation 🔄</button>
-        <button class="action-button" onclick="getParticleInsight()">✨ Get Particle Insight ✨</button>
-        <button class="action-button" onclick="narrateParticleScene()">✨ Narrate Scene ✨</button>
-        <div id="llmOutput" class="llm-output">
-            Click a button to interact with the AI!
+        <button class="action-button" id="startButton">▶️ Start Lucky Draw ▶️</button>
+        <button class="action-button" onclick="window.restartSimulation()">🔄 Restart Simulation 🔄</button>
+        <div id="statusOutput" class="llm-output">
+            Press Start to begin the Lucky Draw!
         </div>
     </div>
 
@@ -222,87 +218,84 @@
 
     <div id="messageBox" class="message-box">
         <p id="messageText"></p>
-        <button onclick="hideMessageBox()">OK</button>
+        <button onclick="window.hideMessageBox()">OK</button>
     </div>
 
-    <script>
-        // Global variables for Firebase configuration (if needed, currently not used)
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+    <script type="module">
+        // Debugging: Initial state of window.particles (from module perspective, after imports)
+        console.log("Script module (after imports) loaded. Initial window.particles:", window.particles);
 
-        // Three.js setup
-        let scene, camera, renderer, cubeWireframe, spotLight, spotLightTarget;
-        let particles = []; // Array of { mesh, velocity, originalPosition, number }
-        let initialParticleColor = new THREE.Color();
-
-        // Global parameters, now modifiable by LLM
-        let numberOfParticles = 1000;
-        let particleSpeedFactor = 0.015; // Slightly increased for initial energy
-        let boxSize = 200;
-        let particleRadius = 1.0;
-        let mouseReactionRadius = 80;
-        let mousePushForce = 1.5;
-        let damping = 0.995; // Less damping for continuous movement
-        let minContinuousSpeed = 0.008; // Higher minimum speed to ensure they never stop
-        let whirlwindStrength = 0.002; // Increased initial whirlwind
-        let inwardSpiralFactor = 0.00005;
-        let restoringForceStrength = 0; // **Removed: Particles will not return to original position**
-        let particleColorHue = 240;
-        let particleColorSaturation = 80;
-        let particleColorLightness = 65;
-
-        // Mouse rotation variables
-        let isDragging = false;
-        let previousMouseX = 0;
-        let previousMouseY = 0;
-        const rotationSpeed = 0.005;
-        const autoRotationSpeed = 0.001; // New: Speed for automatic cube rotation
-
-        let mouse = new THREE.Vector2();
-        let raycaster = new THREE.Raycaster();
-        let mouse3D = new THREE.Vector3();
-
-        // Lucky particle selection variables
-        let selectedParticle = null; // Stores the selected particle object
-        let countdownValue = 3;
-        let countdownInterval;
-        let countdownDisplay;
-        let luckyParticleSelected = false; // Flag to control camera behavior
-        let initialZoomValue; // To store the initial zoom from the slider
-        let simulationStarted = false; // New flag to control countdown start
-        let initialInteractionListenerAdded = false; // Flag to prevent multiple listeners
-        let explosionActive = false; // Flag for explosive reveal
-
-        // Shake gesture variables
-        let lastMouseX = 0;
-        let lastMouseY = 0;
-        let shakeThreshold = 10; // Pixels moved per frame to count as a shake
-        let shakeCount = 0;
-        let maxShakeCount = 5; // Number of shakes to trigger countdown
-        let shakeTimeout;
-
-        // Temporary vectors for camera calculations
-        const targetCameraPosition = new THREE.Vector3();
-        const targetCameraLookAt = new THREE.Vector3();
-        const cameraLerpFactor = 0.05; // Smoothness of camera transition
-        const zoomInDistance = particleRadius * 8; // Adjusted zoom distance for better visibility of the number
-
-        // Function to display messages in a custom message box instead of alert()
-        function showMessageBox(message) {
+        // Function to display messages in a custom message box (moved here for global access)
+        window.showMessageBox = function(message) {
             const messageBox = document.getElementById('messageBox');
             const messageText = document.getElementById('messageText');
-            messageBox.textContent = message;
+            messageText.innerHTML = message;
             messageBox.style.display = 'block';
-        }
+        };
 
-        // Function to hide the custom message box
-        function hideMessageBox() {
+        // Function to hide the custom message box (moved here for global access)
+        window.hideMessageBox = function() {
             document.getElementById('messageBox').style.display = 'none';
-        }
+        };
+
+        // --- Three.js Setup ---
+        // `window.particles` is now declared globally in a separate script tag above.
+        let scene, camera, renderer, cubeWireframe;
+        let initialParticleColor = new THREE.Color();
+
+        // Global parameters - Adjusted for slower animation
+        let numberOfParticles = 1000;
+        let particleSpeedFactor = 0.002; // Reduced for slower motion
+        let boxSize = 200;
+        let particleRadius = 1.0;
+        let damping = 0.9995; // Slightly increased for more damping (slower movement)
+
+        // Galactic Motion Parameters - Adjusted for slower animation
+        let gravitationalPull = 0.00002; // Reduced
+        let orbitalVelocityFactor = 0.0002; // Reduced
+        let galacticRandomMotion = 0.0002; // Reduced
+
+        // Intergalactic Movement Parameters (Peculiar Velocities) - Adjusted for slower animation
+        let peculiarVelocity = new THREE.Vector3(0.000005, 0.0000025, 0.000005); // Reduced
+        let peculiarVelocityChangeRate = 0.00000005; // Reduced
+
+        // Cosmic Expansion Parameters - Adjusted for slower animation
+        let cosmicExpansionFactor = 0.00000005; // Reduced
+
+        // Dynamic swirl parameters (will adjust these to reflect new names)
+        let currentOrbitalVelocityFactor = orbitalVelocityFactor;
+        let currentGravitationalPull = gravitationalPull;
+        const maxOrbitalVelocityFactor = 0.0015; // Adjusted max for overall slower feel
+        const maxGravitationalPull = 0.00004; // Adjusted max
+        const swirlIncreaseRate = 0.000002; // Reduced for slower intensification
+
+        // Mouse rotation variables (now global for consistent access)
+        window.rotationSpeed = 0.005;
+        window.autoRotationSpeed = 0.0005; // Reduced for slower automatic cube rotation
+
+        // Lucky particle selection variables
+        const numberOfSelectedParticles = 6;
+        let selectedParticlesArray = [];
+        let countdownValue = 3;
+    
+        let countdownInterval;
+        let countdownDisplay;
+        window.luckyParticleSelected = false; // Expose to window
+        let initialZoomValue;
+        window.simulationStarted = false; // Expose to window // Controls if animation is active
+        let explosionActive = false; // Flag for explosive reveal
+        let explosionStartTime = 0; // To track when the explosion started
+        const explosionDuration = 1500; // 1.5 seconds for the explosion fade animation
 
         // Initialize Three.js scene, camera, renderer
         function initThreeJS() {
+            // Crucial check: Ensure THREE is defined before proceeding
+            if (typeof THREE === 'undefined') {
+                console.error("THREE.js library is not loaded. Cannot initialize Three.js scene.");
+                window.showMessageBox("Error: 3D graphics library not loaded. Please try refreshing.");
+                return;
+            }
+
             scene = new THREE.Scene();
 
             // Camera setup
@@ -315,7 +308,7 @@
             // Renderer setup
             renderer = new THREE.WebGLRenderer({ antialias: true, canvas: document.getElementById('particleCanvas') });
             renderer.setSize(window.innerWidth * 0.9, window.innerHeight * 0.7);
-            renderer.setClearColor(0x0d0d1a, 1);
+            renderer.setClearColor(0x000000, 1); // Deep black background
 
             // Create cube wireframe border
             const geometry = new THREE.BoxGeometry(boxSize, boxSize, boxSize);
@@ -323,67 +316,18 @@
             cubeWireframe = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x404080 }));
             scene.add(cubeWireframe);
 
-            // Add a spotlight for the "spotlight effect"
-            spotLight = new THREE.SpotLight(0xffffff, 1.5); // White light, intensity
-            spotLight.angle = Math.PI / 8; // Narrow beam
-            spotLight.penumbra = 0.5; // Soft edge
-            spotLight.decay = 0.1; // Light fades with distance
-            spotLight.distance = 500; // Max distance of light
-            spotLight.castShadow = true;
-            spotLight.shadow.mapSize.width = 1024;
-            spotLight.shadow.mapSize.height = 1024;
-            scene.add(spotLight);
-
-            spotLightTarget = new THREE.Object3D(); // Target for the spotlight
-            scene.add(spotLightTarget);
-            spotLight.target = spotLightTarget;
-            spotLight.position.set(0, boxSize * 0.7, 0); // Start above the cube
-            spotLightTarget.position.set(0, 0, 0); // Initially point at center
-            spotLight.visible = false; // Hidden initially
-
             // Get reference to the countdown display
             countdownDisplay = document.getElementById('countdownDisplay');
 
-            initParticles(); // Call initParticles here to set up initial particle state
-
-            // Event listeners for mouse interaction (particle pushing)
-            renderer.domElement.addEventListener('mousemove', onMouseMove, false);
-            renderer.domElement.addEventListener('mouseleave', onMouseLeave, false);
-
-            // Event listeners for cube rotation
-            renderer.domElement.addEventListener('mousedown', onMouseDown, false);
-            renderer.domElement.addEventListener('mousemove', onMouseDrag, false);
-            renderer.domElement.addEventListener('mouseup', onMouseUp, false);
-            renderer.domElement.addEventListener('mouseout', onMouseUp, false);
+            initParticles(); // Set up initial particle state
 
             window.addEventListener('resize', onWindowResize, false);
-
-            // Add initial interaction listener to start countdown (for shake gesture)
-            addInitialInteractionListener();
 
             animate();
         }
 
-        // Function to add the initial interaction listener for countdown start
-        function addInitialInteractionListener() {
-            if (!initialInteractionListenerAdded) {
-                const startInteraction = (event) => {
-                    if (!simulationStarted) {
-                        // For shake gesture, we need to track movement, not just click
-                        // The actual startCountdown will be triggered by the shake detection in onMouseMove/onMouseDrag
-                        // This listener just ensures the simulation is "ready" for interaction
-                        simulationStarted = false; // Reset to false, shake gesture will set it to true
-                    }
-                };
-                // Listen for any mouse/touch movement to enable shake detection
-                renderer.domElement.addEventListener('mousemove', startInteraction, false);
-                renderer.domElement.addEventListener('touchmove', startInteraction, false);
-                initialInteractionListenerAdded = true;
-            }
-        }
-
         // Function to create a CanvasTexture for text
-        function createTextTexture(text, color = 'white', fontSize = 128) { // Increased font size to 128
+        function createTextTexture(text, color = 'white', fontSize = 128) {
             const canvas = document.createElement('canvas');
             const context = canvas.getContext('2d');
             const font = `${fontSize}px Arial`;
@@ -404,70 +348,109 @@
             return texture;
         }
 
-        // Initialize particles with whirlwind motion and initial colors
+        // Initialize particles as THREE.Mesh spheres
         function initParticles() {
+            console.log("initParticles: Current window.particles.length before clearing:", window.particles.length); // Debugging log
+
             // Remove existing particles from scene and dispose geometries/materials
-            particles.forEach(p => {
+            window.particles.forEach(p => {
                 scene.remove(p.mesh);
                 p.mesh.geometry.dispose();
                 p.mesh.material.dispose();
-                if (p.textMesh) { // Dispose text mesh if it exists
-                    scene.remove(p.textMesh);
+                if (p.textMesh) {
+                    if (p.mesh.children.includes(p.textMesh)) {
+                        p.mesh.remove(p.textMesh);
+                    }
                     p.textMesh.geometry.dispose();
                     p.textMesh.material.dispose();
                 }
             });
-            particles = []; // Clear the array
-            selectedParticle = null; // Reset selected particle
-            luckyParticleSelected = false; // Reset flag
+            window.particles = []; // Clear the array
+            selectedParticlesArray = []; // Reset selected particles array
+            window.luckyParticleSelected = false; // Reset flag
             explosionActive = false; // Reset explosion flag
+            document.getElementById('statusOutput').textContent = 'Press Start to begin the Lucky Draw!'; // Reset status text
+
+            // Reset dynamic swirl parameters
+            currentOrbitalVelocityFactor = orbitalVelocityFactor;
+            currentGravitationalPull = gravitationalPull;
+
+            console.log("initParticles: numberOfParticles is", numberOfParticles); // Debugging log
 
             const center = new THREE.Vector3(0, 0, 0);
-            const sphereGeometry = new THREE.SphereGeometry(particleRadius, 16, 16); // Increased segments for smoother sphere
+            const sphereGeometry = new THREE.SphereGeometry(particleRadius, 16, 16);
+
+            // Define particleColorHue, particleColorSaturation, particleColorLightness
+            // These were not defined in the previous version, leading to errors.
+            // Setting default values or ensuring they are defined.
+            const particleColorHue = 270; // Default to purple-ish
+            const particleColorSaturation = 70; // Default saturation
+            const particleColorLightness = 60; // Default lightness
 
             initialParticleColor.setHSL(particleColorHue / 360, particleColorSaturation / 100, particleColorLightness / 100);
 
-            for (let i = 0; i < numberOfParticles; i++) {
-                let x = (Math.random() - 0.5) * boxSize;
-                let y = (Math.random() - 0.5) * boxSize;
-                let z = (Math.random() - 0.5) * boxSize;
+            try { // Added try-catch for particle creation loop
+                for (let i = 0; i < numberOfParticles; i++) {
+                    let x = (Math.random() - 0.5) * boxSize;
+                    let y = (Math.random() - 0.5) * boxSize;
+                    let z = (Math.random() - 0.5) * boxSize;
 
-                const particlePos = new THREE.Vector3(x, y, z);
-                const directionFromCenter = new THREE.Vector3().subVectors(particlePos, center).normalize();
+                    const particlePos = new THREE.Vector3(x, y, z);
+                    const directionFromCenter = new THREE.Vector3().subVectors(particlePos, center).normalize();
 
-                const axis = new THREE.Vector3(0, 1, 0);
-                const tangentialVelocity = new THREE.Vector3().crossVectors(axis, directionFromCenter).normalize();
+                    // Initial gravitational pull
+                    const initialGravitationalForce = directionFromCenter.clone().multiplyScalar(-particlePos.length() * gravitationalPull);
 
-                const distanceToCenter = particlePos.distanceTo(center);
-                const inwardVelocity = directionFromCenter.clone().multiplyScalar(-distanceToCenter * inwardSpiralFactor);
+                    // Initial orbital velocity
+                    const axis = new THREE.Vector3(0, 1, 0); // Assume galactic plane is XZ
+                    const initialTangentialVelocity = new THREE.Vector3().crossVectors(axis, directionFromCenter).normalize();
+                    const initialDifferentialFactor = Math.max(0, 1 - (particlePos.length() / (boxSize / 2)));
+                    initialTangentialVelocity.multiplyScalar(particlePos.length() * orbitalVelocityFactor * initialDifferentialFactor);
 
-                const initialVelocity = tangentialVelocity.multiplyScalar(distanceToCenter * whirlwindStrength).add(inwardVelocity);
-                initialVelocity.add(new THREE.Vector3(
-                    (Math.random() - 0.5) * particleSpeedFactor,
-                    (Math.random() - 0.5) * particleSpeedFactor,
-                    (Math.random() - 0.5) * particleSpeedFactor
-                ));
+                    // Initial random galactic motion
+                    const initialRandomMotion = new THREE.Vector3(
+                        (Math.random() - 0.5) * galacticRandomMotion,
+                        (Math.random() - 0.5) * galacticRandomMotion,
+                        (Math.random() - 0.5) * galacticRandomMotion
+                    );
 
-                const material = new THREE.MeshBasicMaterial({ color: initialParticleColor.clone() });
-                const mesh = new THREE.Mesh(sphereGeometry, material);
-                mesh.position.set(x, y, z);
-                scene.add(mesh);
+                    // Initial peculiar velocity (global drift)
+                    const initialPeculiarVelocity = peculiarVelocity.clone();
 
-                particles.push({
-                    mesh: mesh,
-                    velocity: initialVelocity,
-                    number: i + 1 // Assign a unique number to each particle
-                });
+                    // Initial cosmic expansion (subtle outward push)
+                    const initialCosmicExpansionForce = directionFromCenter.clone().multiplyScalar(cosmicExpansionFactor);
+
+                    const initialVelocity = new THREE.Vector3()
+                        .add(initialGravitationalForce)
+                        .add(initialTangentialVelocity)
+                        .add(initialRandomMotion)
+                        .add(initialPeculiarVelocity)
+                        .add(initialCosmicExpansionForce);
+
+                    const material = new THREE.MeshBasicMaterial({ color: initialParticleColor.clone() });
+                    const mesh = new THREE.Mesh(sphereGeometry, material);
+                    mesh.position.set(x, y, z);
+                    scene.add(mesh);
+
+                    window.particles.push({ // Use window.particles
+                        mesh: mesh,
+                        velocity: initialVelocity,
+                        number: i + 1
+                    });
+                    // Log first and last particle to confirm pushing
+                    if (i === 0 || i === numberOfParticles - 1) {
+                        console.log(`initParticles: Pushed particle ${i + 1}. Current array size: ${window.particles.length}`);
+                    }
+                }
+            } catch (error) {
+                console.error("Error during particle creation in initParticles:", error); // Ensure this is visible
+                window.showMessageBox("Error creating particles. Check console for details.");
             }
+            console.log("initParticles: Particles created, total:", window.particles.length); // Debugging log
             // Reset camera to initial position on re-init
             camera.position.z = initialZoomValue;
             camera.position.y = boxSize * 0.2;
             camera.lookAt(0, 0, 0);
-
-            // Hide spotlight on init
-            if (spotLight) {
-                spotLight.visible = false;
-            }
         }
 
         // Animation loop
@@ -477,91 +460,102 @@
             updateParticles();
 
             // Automatic cube rotation if no lucky particle is selected
-            if (!luckyParticleSelected && !simulationStarted) { // Only auto-rotate before interaction starts countdown
-                cubeWireframe.rotation.y += autoRotationSpeed;
-                scene.rotation.y += autoRotationSpeed;
+            if (!window.luckyParticleSelected) {
+                cubeWireframe.rotation.y += window.autoRotationSpeed;
+                scene.rotation.y += window.autoRotationSpeed;
 
-                // Animate spotlight if not selected and countdown hasn't started
-                spotLight.visible = true; // Make spotlight visible
-                const time = Date.now() * 0.0005;
-                const radius = boxSize * 0.8;
-                spotLight.position.x = Math.cos(time) * radius;
-                spotLight.position.z = Math.sin(time) * radius;
-                spotLight.position.y = boxSize * 0.7; // Keep it above
-
-                spotLightTarget.position.x = Math.sin(time * 0.5) * boxSize * 0.2;
-                spotLightTarget.position.z = Math.cos(time * 0.5) * boxSize * 0.2;
-            } else if (luckyParticleSelected) {
-                spotLight.visible = false; // Hide spotlight once particle is selected
-            }
-
-
-            // Camera follow logic for selected particle
-            if (luckyParticleSelected && selectedParticle) {
-                // Calculate target camera position (behind and slightly above the particle)
-                targetCameraLookAt.copy(selectedParticle.mesh.position);
-
-                // Position camera directly in front of the particle, slightly offset for visibility
-                const offset = new THREE.Vector3(0, 0, zoomInDistance);
-                offset.applyQuaternion(selectedParticle.mesh.quaternion);
-                targetCameraPosition.copy(selectedParticle.mesh.position).add(offset);
-
-                // Smoothly move camera
-                camera.position.lerp(targetCameraPosition, cameraLerpFactor);
-                camera.lookAt(targetCameraLookAt);
-
-                // Update text mesh position and orientation
-                if (selectedParticle.textMesh) {
-                    selectedParticle.textMesh.position.copy(selectedParticle.mesh.position);
-                    // Make text face the camera
-                    selectedParticle.textMesh.quaternion.copy(camera.quaternion);
-                    // Offset text slightly in front of the sphere
-                    const textOffset = new THREE.Vector3(0, 0, particleRadius + 0.5);
-                    textOffset.applyQuaternion(camera.quaternion);
-                    selectedParticle.textMesh.position.add(textOffset);
+                // Intensify orbital motion and gravitational pull if simulation has started but selection hasn't happened
+                if (window.simulationStarted) {
+                    currentOrbitalVelocityFactor = Math.min(maxOrbitalVelocityFactor, currentOrbitalVelocityFactor + swirlIncreaseRate);
+                    currentGravitationalPull = Math.min(maxGravitationalPull, currentGravitationalPull + swirlIncreaseRate * 0.1);
                 }
             }
-
-
             renderer.render(scene, camera);
         }
 
         // Update particle positions and handle interactions/boundaries
         function updateParticles() {
-            for (let i = 0; i < particles.length; i++) {
-                const p = particles[i];
+            const center = new THREE.Vector3(0, 0, 0); // Define center for inward pull
 
-                // If explosion is active and this isn't the selected particle, fade it out
-                if (explosionActive && p !== selectedParticle) {
-                    p.mesh.material.opacity -= 0.02; // Fade out speed
+            // Slowly change the direction of peculiar velocity
+            peculiarVelocity.x += (Math.random() - 0.5) * peculiarVelocityChangeRate;
+            peculiarVelocity.y += (Math.random() - 0.5) * peculiarVelocityChangeRate;
+            peculiarVelocity.z += (Math.random() - 0.5) * peculiarVelocityChangeRate;
+
+            for (let i = 0; i < window.particles.length; i++) { // Use window.particles
+                const p = window.particles[i]; // Use window.particles
+                const isSelected = selectedParticlesArray.includes(p);
+
+                // Handle explosion (fading non-selected particles)
+                if (explosionActive && !isSelected) {
+                    const elapsedTime = Date.now() - explosionStartTime;
+                    let opacity = 1 - (elapsedTime / explosionDuration);
+                    p.mesh.material.opacity = Math.max(0, opacity);
                     if (p.mesh.material.opacity <= 0) {
-                        p.mesh.visible = false; // Hide completely
+                        p.mesh.visible = false;
                     }
                 }
 
                 // Apply damping
                 p.velocity.multiplyScalar(damping);
 
-                // Ensure minimum speed for continuous floating (never stop)
+                // Apply dynamic forces if not selected
+                if (!window.luckyParticleSelected && window.simulationStarted) {
+                    const directionFromCenter = new THREE.Vector3().subVectors(p.mesh.position, center).normalize();
+                    const distanceToCenter = p.mesh.position.length(); // Use length for distance to center
+
+                    // Gravitational Pull (inward)
+                    const gravitationalForce = directionFromCenter.clone().multiplyScalar(-distanceToCenter * currentGravitationalPull);
+                    p.velocity.add(gravitationalForce);
+
+                    // Orbital Velocity (tangential, differential rotation)
+                    const axis = new THREE.Vector3(0, 1, 0); // Assume galactic plane is Y-axis for rotation
+                    const tangentialVelocity = new THREE.Vector3().crossVectors(axis, directionFromCenter).normalize();
+                    // Differential rotation: faster closer to center, slower further out
+                    const differentialFactor = Math.max(0, 1 - (distanceToCenter / (boxSize / 2))); // Stronger closer to center
+                    p.velocity.add(tangentialVelocity.multiplyScalar(distanceToCenter * currentOrbitalVelocityFactor * differentialFactor));
+
+                    // Random Galactic Motion
+                    p.velocity.x += (Math.random() - 0.5) * galacticRandomMotion;
+                    p.velocity.y += (Math.random() - 0.5) * galacticRandomMotion;
+                    p.velocity.z += (Math.random() - 0.5) * galacticRandomMotion;
+
+                    // Intergalactic Movement (Peculiar Velocities)
+                    p.velocity.add(peculiarVelocity);
+
+                    // Cosmic Expansion (very subtle outward push)
+                    const cosmicExpansionForce = directionFromCenter.clone().multiplyScalar(cosmicExpansionFactor);
+                    p.velocity.add(cosmicExpansionForce);
+
+                    // Define particleColorHue, particleColorSaturation, particleColorLightness
+                    const particleColorHue = 270; // Default to purple-ish
+                    const particleColorSaturation = 70; // Default saturation
+                    const particleColorLightness = 60; // Default lightness
+
+                    // Dynamic color shift during swirl
+                    p.mesh.material.color.setHSL(
+                        (particleColorHue / 360 + Math.sin(Date.now() * 0.0001 + i * 0.01) * 0.05) % 1, // Subtle hue shift
+                        particleColorSaturation / 100,
+                        particleColorLightness / 100
+                    );
+                } else if (window.luckyParticleSelected) {
+                    // Once selected, keep selected particles' colors vibrant
+                    if (isSelected) {
+                        const particleColorHue = 270; // Default to purple-ish
+                        const particleColorSaturation = 70; // Default saturation
+                        const particleColorLightness = 60; // Default lightness
+                        p.mesh.material.color.setHSL(particleColorHue / 360, particleColorSaturation / 100, particleColorLightness / 100);
+                    }
+                }
+
+                // Ensure minimum speed for continuous floating
+                const minContinuousSpeed = 0.0005; // Define locally if not global
                 if (p.velocity.length() < minContinuousSpeed) {
                     p.velocity.x += (Math.random() - 0.5) * particleSpeedFactor * 0.5;
                     p.velocity.y += (Math.random() - 0.5) * particleSpeedFactor * 0.5;
                     p.velocity.z += (Math.random() - 0.5) * particleSpeedFactor * 0.5;
                 }
 
-                // Mouse interaction (particle pushing) - only if not dragging for rotation and no particle selected
-                if (mouse.isMoving && mouse3D.x !== undefined && !isDragging && !luckyParticleSelected) {
-                    const directionToMouse = new THREE.Vector3().subVectors(mouse3D, p.mesh.position);
-                    const distance = directionToMouse.length();
-
-                    if (distance < mouseReactionRadius) {
-                        const force = (mouseReactionRadius - distance) * mousePushForce;
-                        directionToMouse.normalize().multiplyScalar(-force); // Push away
-                        p.velocity.add(directionToMouse);
-                    }
-                }
-
-                // Update position
                 p.mesh.position.add(p.velocity);
 
                 // Boundary collision (bounce off cube walls) and color change
@@ -584,106 +578,17 @@
                     collided = true;
                 }
 
-                // Change color if collision occurred
-                if (collided) {
+                // Change color if collision occurred (only before selection)
+                if (collided && !window.luckyParticleSelected) {
                     const newColor = new THREE.Color();
                     const newHue = Math.random();
                     const newSaturation = 0.7 + Math.random() * 0.3;
                     const newLightness = 0.5 + Math.random() * 0.3;
                     newColor.setHSL(newHue, newSaturation, newLightness);
-                    p.mesh.material.color.copy(newColor); // Update material color
+                    p.mesh.material.color.copy(newColor);
                 }
             }
         }
-
-        // Event Handlers for particle pushing and shake gesture
-        function onMouseMove(event) {
-            if (!luckyParticleSelected && !simulationStarted) { // Only detect shake if simulation hasn't started
-                const currentMouseX = event.clientX;
-                const currentMouseY = event.clientY;
-
-                const deltaX = Math.abs(currentMouseX - lastMouseX);
-                const deltaY = Math.abs(currentMouseY - lastMouseY);
-
-                if (deltaX > shakeThreshold || deltaY > shakeThreshold) {
-                    shakeCount++;
-                    clearTimeout(shakeTimeout); // Reset timer on new shake
-                    shakeTimeout = setTimeout(() => {
-                        shakeCount = 0; // Reset shake count if no new shakes within timeout
-                    }, 200); // 200ms window for shakes
-
-                    if (shakeCount >= maxShakeCount) {
-                        simulationStarted = true; // Mark simulation as started
-                        startCountdown();
-                        shakeCount = 0; // Reset for next time
-                        clearTimeout(shakeTimeout);
-                    }
-                }
-                lastMouseX = currentMouseX;
-                lastMouseY = currentMouseY;
-            }
-
-            // Existing mouse interaction for particle pushing
-            if (!isDragging && !luckyParticleSelected) {
-                const canvasRect = renderer.domElement.getBoundingClientRect();
-                mouse.x = ((event.clientX - canvasRect.left) / canvasRect.width) * 2 - 1;
-                mouse.y = -((event.clientY - canvasRect.top) / canvasRect.height) * 2 + 1;
-
-                let vector = new THREE.Vector3(mouse.x, mouse.y, 0.5);
-                vector.unproject(camera);
-
-                let dir = vector.sub(camera.position).normalize();
-                let distance = camera.position.distanceTo(new THREE.Vector3(0, 0, 0));
-                mouse3D.copy(camera.position).add(dir.multiplyScalar(distance));
-
-                const halfBox = boxSize / 2;
-                mouse3D.x = Math.max(-halfBox, Math.min(halfBox, mouse3D.x));
-                mouse3D.y = Math.max(-halfBox, Math.min(halfBox, mouse3D.y));
-                mouse3D.z = Math.max(-halfBox, Math.min(halfBox, mouse3D.z));
-
-                mouse.isMoving = true;
-                clearTimeout(mouse.timeout);
-                mouse.timeout = setTimeout(() => {
-                    mouse.isMoving = false;
-                }, 50);
-            }
-        }
-
-        function onMouseLeave() {
-            mouse.isMoving = false;
-            mouse3D.set(undefined, undefined, undefined);
-        }
-
-        // Event Handlers for cube rotation (mouse drag)
-        function onMouseDown(event) {
-            if (event.button === 0 && !luckyParticleSelected) { // Disable rotation if lucky particle is selected
-                isDragging = true;
-                previousMouseX = event.clientX;
-                previousMouseY = event.clientY;
-                renderer.domElement.classList.add('grabbing'); // Change cursor
-            }
-        }
-
-        function onMouseDrag(event) {
-            if (isDragging && !luckyParticleSelected) { // Disable rotation if lucky particle is selected
-                const deltaX = event.clientX - previousMouseX;
-                const deltaY = event.clientY - previousMouseY;
-
-                cubeWireframe.rotation.y += deltaX * rotationSpeed;
-                scene.rotation.y += deltaX * rotationSpeed;
-                scene.rotation.x += deltaY * rotationSpeed;
-
-
-                previousMouseX = event.clientX;
-                previousMouseY = event.clientY;
-            }
-        }
-
-        function onMouseUp(event) {
-            isDragging = false;
-            renderer.domElement.classList.remove('grabbing'); // Restore cursor
-        }
-
 
         function onWindowResize() {
             const canvasElement = document.getElementById('particleCanvas');
@@ -696,17 +601,30 @@
         }
 
         // Function to update initial camera zoom (from slider)
-        function updateInitialCameraZoom(value) {
+        window.updateInitialCameraZoom = function(value) { // Expose to window
             initialZoomValue = parseFloat(value);
-            if (!luckyParticleSelected) { // Only apply if not in lucky particle mode
+            if (!window.luckyParticleSelected) {
                 camera.position.z = initialZoomValue;
                 camera.updateProjectionMatrix();
             }
         }
 
-        // Function to start the countdown
-        function startCountdown() {
-            clearInterval(countdownInterval); // Ensure any previous countdown is cleared
+        // --- Game Flow Functions ---
+        // startLuckyDraw is now exposed globally via window.startLuckyDraw in the module script
+        window.startLuckyDraw = function() {
+            // If simulation is already started, restart it instead of showing a message
+            if (window.simulationStarted) {
+                window.restartSimulation();
+                return;
+            }
+            window.simulationStarted = true;
+            document.getElementById('statusOutput').textContent = 'Spheres are swirling for luck...';
+            window.startCountdown();
+        };
+
+        // Expose startCountdown to the global scope
+        window.startCountdown = function() {
+            clearInterval(countdownInterval);
             countdownDisplay.style.display = 'block';
             countdownValue = 3;
             countdownDisplay.textContent = countdownValue;
@@ -719,289 +637,148 @@
                     countdownDisplay.textContent = 'GO!';
                     clearInterval(countdownInterval);
                     setTimeout(() => {
-                        countdownDisplay.style.display = 'none';
-                        autoSelectLuckyParticle(); // Trigger selection after "GO!"
-                    }, 500); // Keep "GO!" visible for a moment
+                        window.autoSelectLuckyParticles();
+                    }, 500);
                 }
-            }, 1000); // Update every 1 second
-        }
+            }, 1000);
+        };
 
-        // Function to automatically select a random particle and zoom/follow it
-        function autoSelectLuckyParticle() {
-            if (particles.length === 0) {
-                showMessageBox('No particles to select from!');
+        // Expose autoSelectLuckyParticles to the global scope
+        window.autoSelectLuckyParticles = function() {
+            console.log("autoSelectLuckyParticles: Current window.particles array length:", window.particles.length); // Debugging log
+            if (window.particles.length === 0) { // Use window.particles
+                window.showMessageBox('No particles to select from!');
                 return;
             }
 
-            const highestVelocityParticleIndex = findHighestVelocityParticleIndex();
-            selectedParticle = particles[highestVelocityParticleIndex];
+            selectedParticlesArray = [];
+            // Create a fresh array of available indices for unbiased selection.
+            // This ensures every particle has an equal chance of being picked.
+            const availableIndices = Array.from({ length: window.particles.length }, (_, i) => i);
 
-            // Apply explosive reveal (fading) to other particles
-            explosionActive = true;
-            particles.forEach(p => {
-                if (p !== selectedParticle) {
+            for (let i = 0; i < numberOfSelectedParticles; i++) {
+                if (availableIndices.length === 0) break;
+
+                // Randomly select an index from the available pool.
+                // This provides equal probability for all remaining particles.
+                const randomIndex = Math.floor(Math.random() * availableIndices.length);
+                // Get the actual particle index and remove it from the available pool.
+                // This ensures independence of outcomes and no duplicate selections.
+                const particleIndex = availableIndices.splice(randomIndex, 1)[0];
+                const p = window.particles[particleIndex]; // Use window.particles
+
+                selectedParticlesArray.push(p);
+
+                // Add text mesh for each selected particle
+                const textTexture = createTextTexture(String(p.number), 'white', 128);
+                const textMaterial = new THREE.MeshBasicMaterial({ map: textTexture, transparent: true, side: THREE.DoubleSide });
+                const textScaleFactor = 0.5;
+                const textGeometry = new THREE.PlaneGeometry(
+                    textTexture.image.width / 100 * textScaleFactor,
+                    textTexture.image.height / 100 * textScaleFactor
+                );
+                p.textMesh = new THREE.Mesh(textGeometry, textMaterial);
+                p.textMesh.position.z = particleRadius + 0.1;
+                p.mesh.add(p.textMesh);
+            }
+
+            explosionActive = true; // Trigger fading of non-selected particles
+            explosionStartTime = Date.now(); // Record start time of explosion
+            window.particles.forEach(p => { // Use window.particles
+                if (!selectedParticlesArray.includes(p)) {
                     p.mesh.material.transparent = true; // Enable transparency for fading
                 }
             });
 
-            // Create text mesh for the selected particle's number
-            const textTexture = createTextTexture(String(selectedParticle.number), 'white', 128);
-            const textMaterial = new THREE.MeshBasicMaterial({ map: textTexture, transparent: true, side: THREE.DoubleSide });
-            const textScaleFactor = 0.5;
-            const textGeometry = new THREE.PlaneGeometry(
-                textTexture.image.width / 100 * textScaleFactor,
-                textTexture.image.height / 100 * textScaleFactor
-            );
-            selectedParticle.textMesh = new THREE.Mesh(textGeometry, textMaterial);
-            scene.add(selectedParticle.textMesh);
+            window.luckyParticleSelected = true;
+            document.getElementById('statusOutput').textContent = 'Lucky Numbers Selected!';
 
-            luckyParticleSelected = true;
+            const selectedNumbers = selectedParticlesArray.map(p => p.number).join(', ');
+            const sumOfNumbers = selectedParticlesArray.reduce((sum, p) => sum + p.number, 0);
+            
+            // Delay displaying the numerology fortune until after the explosion animation
+            setTimeout(() => {
+                displayNumerologyFortune(sumOfNumbers, selectedNumbers);
+                explosionActive = false; // Stop explosion logic after duration
+                countdownDisplay.style.display = 'none'; // Hide the "GO!" text
+            }, explosionDuration);
+        };
 
-            // Immediately set target camera position/lookAt for smooth transition
-            targetCameraLookAt.copy(selectedParticle.mesh.position);
-            const offset = new THREE.Vector3(0, 0, zoomInDistance);
-            offset.applyQuaternion(selectedParticle.mesh.quaternion);
-            targetCameraPosition.copy(selectedParticle.mesh.position).add(offset);
-        }
-
-        // Helper function to find the particle with the highest velocity
-        function findHighestVelocityParticleIndex() {
-            let maxSpeed = -1;
-            let maxIndex = 0;
-            for (let i = 0; i < particles.length; i++) {
-                const speed = particles[i].velocity.length();
-                if (speed > maxSpeed) {
-                    maxSpeed = speed;
-                    maxIndex = i;
-                }
-            }
-            return maxIndex;
-        }
-
-        // Function to restart the simulation
-        function restartSimulation() {
-            // Clear any active countdown
+        // Expose restartSimulation to the global scope
+        window.restartSimulation = function() {
             clearInterval(countdownInterval);
             countdownDisplay.style.display = 'none';
             countdownValue = 3;
-            simulationStarted = false; // Reset simulation state
-            explosionActive = false; // Reset explosion flag
+            window.simulationStarted = false;
+            explosionActive = false;
 
-            // Re-initialize particles and scene
-            initParticles();
+            initParticles(); // Re-initialize particles and scene
 
-            // Reset camera to initial state
             camera.position.z = initialZoomValue;
             camera.position.y = boxSize * 0.2;
             camera.lookAt(0, 0, 0);
+        };
 
-            // Ensure the initial interaction listener is re-added
-            initialInteractionListenerAdded = false; // Allow it to be re-added
-            addInitialInteractionListener();
-
-            // Reset LLM output
-            document.getElementById('llmOutput').textContent = 'Click a button to interact with the AI!';
+        // --- Numerology Logic ---
+        function reduceToSingleDigit(number) {
+            if (number === 11 || number === 22 || number === 33) {
+                return number; // Master numbers
+            }
+            let sum = 0;
+            while (number > 0 || sum > 9) {
+                if (number === 0) {
+                    number = sum;
+                    sum = 0;
+                }
+                sum += number % 10;
+                number = Math.floor(number / 10);
+            }
+            return sum;
         }
 
-        // Function to call Gemini API and get particle insight
-        async function getParticleInsight() {
-            const llmOutputDiv = document.getElementById('llmOutput');
-            llmOutputDiv.textContent = 'Generating insight...';
-
-            const prompt = `Describe the behavior of a 3D particle system with the following characteristics in a concise and imaginative way (max 50 words):
-- Number of particles: ${numberOfParticles}
-- Average speed: ${particleSpeedFactor}
-- Damping (how quickly they slow down naturally): ${damping}
-- Mouse interaction radius: ${mouseReactionRadius}
-- Mouse push force: ${mousePushForce}
-- Initial whirlwind strength: ${whirlwindStrength}
-- Inward spiral factor: ${inwardSpiralFactor}
-- Particles never return to original position.
-- Particle Color: HSL(${particleColorHue}, ${particleColorSaturation}%, ${particleColorLightness}%)
-- Particle Shape: Sphere
-- Particles slow down but never stop.
-Focus on the overall visual impression and motion.`;
-
-            let chatHistory = [];
-            chatHistory.push({ role: "user", parts: [{ text: prompt }] });
-            const payload = { contents: chatHistory };
-            const apiKey = "";
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
-
-            try {
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                const result = await response.json();
-
-                if (result.candidates && result.candidates.length > 0 &&
-                    result.candidates[0].content && result.candidates[0].content.parts &&
-                    result.candidates[0].content.parts.length > 0) {
-                    const text = result.candidates[0].content.parts[0].text;
-                    llmOutputDiv.textContent = text;
-                } else {
-                    llmOutputDiv.textContent = 'Failed to get insight. Please try again.';
-                    console.error('Gemini API response structure unexpected:', result);
-                    showMessageBox('Failed to get insight. Check console for details.');
-                }
-            } catch (error) {
-                llmOutputDiv.textContent = 'Error generating insight.';
-                console.error('Error calling Gemini API:', error);
-                showMessageBox('Error calling Gemini API. Check console for details.');
+        function getNumerologyMeaning(number) {
+            switch (number) {
+                case 1: return "The Leader: New beginnings, independence, and strong will. You are destined to forge your own path.";
+                case 2: return "The Harmonizer: Balance, cooperation, and diplomacy. Your path is one of partnership and understanding.";
+                case 3: return "The Creator: Creativity, communication, and joy. Express yourself and inspire others with your vibrant energy.";
+                case 4: return "The Builder: Stability, hard work, and strong foundations. Diligence will lead you to lasting success.";
+                case 5: return "The Adventurer: Freedom, change, and adaptability. Embrace new experiences and explore the world around you.";
+                case 6: return "The Nurturer: Responsibility, harmony, and compassion. Your focus is on home, family, and service to others.";
+                case 7: return "The Seeker: Spirituality, introspection, and wisdom. Your journey is one of deep thought and discovery.";
+                case 8: return "The Achiever: Abundance, power, and ambition. You have the potential for great material and personal success.";
+                case 9: return "The Humanitarian: Completion, compassion, and universal love. Your purpose is to serve humanity.";
+                case 11: return "The Master Intuitive: High intuition, inspiration, and spiritual insight. You are a channel for higher truths.";
+                case 22: return "The Master Builder: Practical idealism, vision, and large-scale creation. You can manifest great dreams.";
+                case 33: return "The Master Teacher: Compassionate service, universal love, and healing. You are here to uplift humanity.";
+                default: return "An unknown cosmic energy surrounds your numbers. Explore further!";
             }
         }
 
-        // Function to apply mood to particles using Gemini API
-        async function applyMoodToParticles() {
-            const moodInput = document.getElementById('moodInput');
-            const llmOutputDiv = document.getElementById('llmOutput');
-            const userMood = moodInput.value.trim();
-
-            if (!userMood) {
-                showMessageBox('Please enter a mood or theme!');
-                return;
-            }
-
-            llmOutputDiv.textContent = `Applying "${userMood}" mood...`;
-
-            const prompt = `Given the mood/theme '${userMood}', suggest numerical parameters for a 3D particle system to visually represent this mood. Provide values for:
-- numberOfParticles (integer, 500-1500)
-- particleSpeedFactor (float, 0.001-0.02)
-- damping (float, 0.95-0.999)
-- mouseReactionRadius (integer, 20-100)
-- mousePushForce (float, 0.1-1.0)
-- whirlwindStrength (float, 0.0001-0.005)
-- inwardSpiralFactor (float, 0.00001-0.0005)
-- particleColorHue (integer, 0-360)
-- particleColorSaturation (integer, 50-100)
-- particleColorLightness (integer, 30-90)
-Also, provide a short description (max 30 words) of how these parameters evoke the mood. Ensure all values are within the specified ranges. Particles should never return to original position and slow down but never stop. Return as a JSON object.`;
-
-            let chatHistory = [];
-            chatHistory.push({ role: "user", parts: [{ text: prompt }] });
-            const payload = {
-                contents: chatHistory,
-                generationConfig: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: "OBJECT",
-                        properties: {
-                            "numberOfParticles": { "type": "INTEGER" },
-                            "particleSpeedFactor": { "type": "NUMBER" },
-                            "damping": { "type": "NUMBER" },
-                            "mouseReactionRadius": { "type": "INTEGER" },
-                            "mousePushForce": { "type": "NUMBER" },
-                            "whirlwindStrength": { "type": "NUMBER" },
-                            "inwardSpiralFactor": { "type": "NUMBER" },
-                            "particleColorHue": { "type": "INTEGER" },
-                            "particleColorSaturation": { "type": "INTEGER" },
-                            "particleColorLightness": { "type": "INTEGER" },
-                            "description": { "type": "STRING" }
-                        },
-                        required: [
-                            "numberOfParticles", "particleSpeedFactor", "damping",
-                            "mouseReactionRadius", "mousePushForce", "whirlwindStrength",
-                            "inwardSpiralFactor",
-                            "particleColorHue", "particleColorSaturation",
-                            "particleColorLightness", "description"
-                        ]
-                    }
-                }
-            };
-            const apiKey = "";
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
-
-            try {
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                const result = await response.json();
-
-                if (result.candidates && result.candidates.length > 0 &&
-                    result.candidates[0].content && result.candidates[0].content.parts &&
-                    result.candidates[0].content.parts.length > 0) {
-                    const jsonText = result.candidates[0].content.parts[0].text;
-                    const parsedData = JSON.parse(jsonText);
-
-                    // Apply new parameters
-                    numberOfParticles = parsedData.numberOfParticles;
-                    particleSpeedFactor = parsedData.particleSpeedFactor;
-                    damping = parsedData.damping;
-                    mouseReactionRadius = parsedData.mouseReactionRadius;
-                    mousePushForce = parsedData.mousePushForce;
-                    whirlwindStrength = parsedData.whirlwindStrength;
-                    inwardSpiralFactor = parsedData.inwardSpiralFactor;
-                    particleColorHue = parsedData.particleColorHue;
-                    particleColorSaturation = parsedData.particleColorSaturation;
-                    particleColorLightness = parsedData.particleColorLightness;
-
-                    // Re-initialize particles with new parameters
-                    initParticles();
-                    llmOutputDiv.textContent = `Mood Applied! ${parsedData.description}`;
-                } else {
-                    llmOutputDiv.textContent = 'Failed to apply mood. Please try again.';
-                    console.error('Gemini API response structure unexpected:', result);
-                    showMessageBox('Failed to apply mood. Check console for details.');
-                }
-            } catch (error) {
-                llmOutputDiv.textContent = 'Error applying mood.';
-                console.error('Error calling Gemini API:', error);
-                showMessageBox('Error calling Gemini API. Check console for details.');
-            }
-        }
-
-        // Function to narrate the particle scene using Gemini API
-        async function narrateParticleScene() {
-            const llmOutputDiv = document.getElementById('llmOutput');
-            llmOutputDiv.textContent = 'Generating narration...';
-
-            let narrationPrompt = `Narrate a short, imaginative story or poem (max 60 words) about a 3D particle system. Focus on its current state:
-- Number of particles: ${numberOfParticles}
-- Particle speed: ${particleSpeedFactor} (consider its current dynamic state)
-- Damping: ${damping} (how it affects motion)
-- Mouse interaction: ${mouseReactionRadius > 0 ? 'present' : 'absent'}
-- Lucky particle selected: ${selectedParticle ? 'Yes, particle ' + selectedParticle.number + ' is in focus.' : 'No lucky particle selected.'}
-- Overall mood: Describe the visual and motion characteristics.`;
-
-            let chatHistory = [];
-            chatHistory.push({ role: "user", parts: [{ text: narrationPrompt }] });
-            const payload = { contents: chatHistory };
-            const apiKey = "";
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
-
-            try {
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                const result = await response.json();
-
-                if (result.candidates && result.candidates.length > 0 &&
-                    result.candidates[0].content && result.candidates[0].content.parts &&
-                    result.candidates[0].content.parts.length > 0) {
-                    const text = result.candidates[0].content.parts[0].text;
-                    llmOutputDiv.textContent = text;
-                } else {
-                    llmOutputDiv.textContent = 'Failed to generate narration. Please try again.';
-                    console.error('Gemini API response structure unexpected:', result);
-                    showMessageBox('Failed to generate narration. Check console for details.');
-                }
-            } catch (error) {
-                llmOutputDiv.textContent = 'Error generating narration.';
-                console.error('Error calling Gemini API:', error);
-                showMessageBox('Error calling Gemini API. Check console for details.');
-            }
+        function displayNumerologyFortune(totalSum, selectedNumbersString) {
+            const numerologyNumber = reduceToSingleDigit(totalSum);
+            const meaning = getNumerologyMeaning(numerologyNumber);
+            const message = `
+                <p style="font-weight: bold; font-size: 1.2em; margin-bottom: 0.5em;">Your Lucky Numbers: ${selectedNumbersString}</p>
+                <p style="font-weight: bold; font-size: 1.5em; margin-bottom: 1em;">Numerology Sum: ${numerologyNumber}</p>
+                <p>${meaning}</p>
+            `;
+            window.showMessageBox(message);
         }
 
         // Initialize and start animation when the window loads
-        window.onload = function() {
+        window.onload = async function() {
+            console.log("window.onload: Starting initialization.");
+            console.log("window.onload: window.particles before initThreeJS:", window.particles);
             initThreeJS();
             onWindowResize();
+
+            // Attach event listener to the start button
+            const startButton = document.getElementById('startButton');
+            if (startButton) {
+                startButton.addEventListener('click', window.startLuckyDraw);
+            }
+
+            console.log("window.onload: Initialization complete.");
         };
 
     </script>

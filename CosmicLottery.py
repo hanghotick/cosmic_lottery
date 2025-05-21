@@ -3,24 +3,23 @@ Cosmic Lottery - Python Version (Windows Compatible)
 
 Dependencies:
 - pyglet (for 3D rendering): pip install pyglet
-- requests (for Gemini API): pip install requests
-- tkinter (built-in for UI)
+- PyOpenGL (for OpenGL functions): pip install PyOpenGL
+- tkinter (for UI, built-in)
 
-Run: python cosmic_lottery.py
+Run: python CosmicLottery.py
 """
 import pyglet
-from pyglet.gl import *
 import tkinter as tk
-from tkinter import ttk
 import threading
 import random
 import math
-import requests
-import json
 
-# --- Gemini API Setup ---
-GEMINI_API_KEY = ""  # <-- Put your Gemini API key here
-GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+# Use PyOpenGL for OpenGL functions/constants
+try:
+    from OpenGL.GL import *
+    from OpenGL.GLU import *
+except ImportError:
+    raise ImportError("PyOpenGL is required. Install it with: pip install PyOpenGL")
 
 # --- Particle System Parameters (defaults) ---
 numberOfParticles = 1000
@@ -46,9 +45,6 @@ luckyParticleSelected = False
 # --- Camera State ---
 camera_zoom = 160
 camera_angle = 0.0
-
-# --- UI State ---
-llm_output = "Click a button to interact with the AI!"
 
 # --- Helper Functions ---
 def hsl_to_rgb(h, s, l):
@@ -211,7 +207,6 @@ class ParticleWindow(pyglet.window.Window):
             self.draw_particle_number(selectedParticle)
 
     def draw_particle_number(self, p):
-        # Draw the number above the particle
         glPushMatrix()
         glTranslatef(p['pos'][0], p['pos'][1]+8, p['pos'][2])
         glColor3f(1, 1, 1)
@@ -227,25 +222,11 @@ class ParticleWindow(pyglet.window.Window):
         global camera_angle
         camera_angle += dx * 0.01
 
-# --- Tkinter UI ---
+# --- Tkinter UI (Optional, for controls) ---
 def run_ui():
-    global camera_zoom
     root = tk.Tk()
     root.title("Cosmic Lottery Controls")
-    root.geometry("500x400+1050+100")
-    # Mood input
-    mood_label = tk.Label(root, text="Enter a mood (e.g., 'calm', 'energetic'):")
-    mood_label.pack(pady=5)
-    mood_entry = tk.Entry(root, width=30)
-    mood_entry.pack(pady=5)
-    def on_apply_mood():
-        mood = mood_entry.get().strip()
-        if not mood:
-            set_llm_output("Please enter a mood or theme!")
-            return
-        set_llm_output(f'Applying "{mood}" mood...")
-        threading.Thread(target=apply_mood_to_particles, args=(mood,)).start()
-    tk.Button(root, text="✨ Apply Mood ✨", command=on_apply_mood).pack(pady=5)
+    root.geometry("500x300+1050+100")
     # Zoom slider
     zoom_label = tk.Label(root, text="Initial Zoom:")
     zoom_label.pack(pady=5)
@@ -257,88 +238,20 @@ def run_ui():
         camera_zoom = float(val)
     zoom_slider.config(command=on_zoom)
     # Restart button
-    tk.Button(root, text="🔄 Restart Simulation 🔄", command=lambda: [reset_particles(), set_llm_output("Simulation restarted!")]).pack(pady=5)
-    # Particle insight
-    tk.Button(root, text="✨ Get Particle Insight ✨", command=lambda: threading.Thread(target=get_particle_insight).start()).pack(pady=5)
-    # Narrate scene
-    tk.Button(root, text="✨ Narrate Scene ✨", command=lambda: threading.Thread(target=narrate_particle_scene).start()).pack(pady=5)
+    tk.Button(root, text="🔄 Restart Simulation 🔄", command=reset_particles).pack(pady=5)
     # Lucky particle
-    tk.Button(root, text="🎲 Select Lucky Particle 🎲", command=lambda: [select_lucky_particle(), set_llm_output("Lucky particle selected!")]).pack(pady=5)
-    # LLM output
-    output_label = tk.Label(root, textvariable=llm_output_var, wraplength=400, justify='center', bg='#2a2a4a', fg='#e0e0e0', height=4)
-    output_label.pack(pady=10, fill='x')
+    tk.Button(root, text="🎲 Select Lucky Particle 🎲", command=select_lucky_particle).pack(pady=5)
     root.mainloop()
 
-def set_llm_output(text):
-    global llm_output
-    llm_output = text
-    llm_output_var.set(text)
-
-# --- LLM API Calls ---
-def get_particle_insight():
-    set_llm_output('Generating insight...')
-    prompt = f"""Describe the behavior of a 3D particle system with the following characteristics in a concise and imaginative way (max 50 words):\n- Number of particles: {numberOfParticles}\n- Average speed: {particleSpeedFactor}\n- Damping: {damping}\n- Mouse interaction radius: {mouseReactionRadius}\n- Mouse push force: {mousePushForce}\n- Initial whirlwind strength: {whirlwindStrength}\n- Inward spiral factor: {inwardSpiralFactor}\n- Particles never return to original position.\n- Particle Color: HSL({particleColorHue}, {particleColorSaturation}%, {particleColorLightness}%)\n- Particle Shape: Sphere\n- Particles slow down but never stop.\nFocus on the overall visual impression and motion."""
-    payload = {"contents": [{"role": "user", "parts": [{"text": prompt}]}]}
-    try:
-        r = requests.post(GEMINI_API_URL, headers={'Content-Type': 'application/json'}, data=json.dumps(payload))
-        result = r.json()
-        if 'candidates' in result and result['candidates']:
-            text = result['candidates'][0]['content']['parts'][0]['text']
-            set_llm_output(text)
-        else:
-            set_llm_output('Failed to get insight.')
-    except Exception as e:
-        set_llm_output(f'Error: {e}')
-
-def apply_mood_to_particles(mood):
-    global numberOfParticles, particleSpeedFactor, damping, mouseReactionRadius, mousePushForce, whirlwindStrength, inwardSpiralFactor, particleColorHue, particleColorSaturation, particleColorLightness
-    prompt = f"Given the mood/theme '{mood}', suggest numerical parameters for a 3D particle system to visually represent this mood. Provide values for:\n- numberOfParticles (integer, 500-1500)\n- particleSpeedFactor (float, 0.001-0.02)\n- damping (float, 0.95-0.999)\n- mouseReactionRadius (integer, 20-100)\n- mousePushForce (float, 0.1-1.0)\n- whirlwindStrength (float, 0.0001-0.005)\n- inwardSpiralFactor (float, 0.00001-0.0005)\n- particleColorHue (integer, 0-360)\n- particleColorSaturation (integer, 50-100)\n- particleColorLightness (integer, 30-90)\nAlso, provide a short description (max 30 words) of how these parameters evoke the mood. Ensure all values are within the specified ranges. Particles should never return to original position and slow down but never stop. Return as a JSON object."
-    payload = {"contents": [{"role": "user", "parts": [{"text": prompt}]}]}
-    try:
-        r = requests.post(GEMINI_API_URL, headers={'Content-Type': 'application/json'}, data=json.dumps(payload))
-        result = r.json()
-        if 'candidates' in result and result['candidates']:
-            jsonText = result['candidates'][0]['content']['parts'][0]['text']
-            parsed = json.loads(jsonText)
-            numberOfParticles = parsed['numberOfParticles']
-            particleSpeedFactor = parsed['particleSpeedFactor']
-            damping = parsed['damping']
-            mouseReactionRadius = parsed['mouseReactionRadius']
-            mousePushForce = parsed['mousePushForce']
-            whirlwindStrength = parsed['whirlwindStrength']
-            inwardSpiralFactor = parsed['inwardSpiralFactor']
-            particleColorHue = parsed['particleColorHue']
-            particleColorSaturation = parsed['particleColorSaturation']
-            particleColorLightness = parsed['particleColorLightness']
-            reset_particles()
-            set_llm_output(f"Mood Applied! {parsed['description']}")
-        else:
-            set_llm_output('Failed to apply mood.')
-    except Exception as e:
-        set_llm_output(f'Error: {e}')
-
-def narrate_particle_scene():
-    prompt = f"""Narrate a short, imaginative story or poem (max 60 words) about a 3D particle system. Focus on its current state:\n- Number of particles: {numberOfParticles}\n- Particle speed: {particleSpeedFactor} (consider its current dynamic state)\n- Damping: {damping} (how it affects motion)\n- Mouse interaction: {'present' if mouseReactionRadius > 0 else 'absent'}\n- Lucky particle selected: {'Yes, particle ' + str(selectedParticle['number']) if selectedParticle else 'No lucky particle selected.'}\n- Overall mood: Describe the visual and motion characteristics."""
-    payload = {"contents": [{"role": "user", "parts": [{"text": prompt}]}]}
-    try:
-        r = requests.post(GEMINI_API_URL, headers={'Content-Type': 'application/json'}, data=json.dumps(payload))
-        result = r.json()
-        if 'candidates' in result and result['candidates']:
-            text = result['candidates'][0]['content']['parts'][0]['text']
-            set_llm_output(text)
-        else:
-            set_llm_output('Failed to generate narration.')
-    except Exception as e:
-        set_llm_output(f'Error: {e}')
-
 # --- Main ---
-llm_output_var = tk.StringVar()
-llm_output_var.set(llm_output)
-reset_particles()
+def main():
+    reset_particles()
+    # Start UI in a thread (optional, comment out if not needed)
+    # ui_thread = threading.Thread(target=run_ui, daemon=True)
+    # ui_thread.start()
+    # Start 3D window (main thread)
+    window = ParticleWindow()
+    pyglet.app.run()
 
-# Start UI in a thread
-ui_thread = threading.Thread(target=run_ui, daemon=True)
-ui_thread.start()
-
-# Start 3D window (main thread)
-ParticleWindow().run()
+if __name__ == "__main__":
+    main()

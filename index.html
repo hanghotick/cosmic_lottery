@@ -309,7 +309,7 @@
             box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
         }
 
-        /* --- Loading Indicator --- */
+        /* Loading Spinner Styles */
         #loadingOverlay {
             position: fixed;
             top: 0;
@@ -353,7 +353,7 @@
                 </div>
                 <div class="input-group">
                     <label for="maxNumberInput" id="labelMaxNumberInput"></label>
-                    <input type="number" id="maxNumberInput" min="6" max="10000" value="1000">
+                    <input type="number" id="maxNumberInput" min="6" max="10000" value="10000">
                 </div>
                 <div class="input-group">
                     <label for="numLuckyNumbersInput" id="labelNumLuckyNumbers"></label>
@@ -381,14 +381,14 @@
 
     <div id="loadingOverlay" style="display:none;">
         <div style="display:flex;flex-direction:column;align-items:center;">
-            <div class="spinner" style="border: 6px solid #eee; border-top: 6px solid #8c07d3; border-radius: 50%; width: 60px; height: 60px; animation: spin 1s linear infinite;"></div>
+            <div class="spinner"></div>
             <div style="color:#fff; margin-top:1.5rem; font-size:1.2rem; text-align:center;">Loading particles...</div>
         </div>
     </div>
 
     <script type="module">
         // Global declaration of window.particles to ensure it's available before module scripts
-        window.particles = [];
+        window.particles = []; // This will now store particle data, not meshes
         console.log("Global script: window.particles initialized to:", window.particles);
 
         // --- DOM Element References ---
@@ -404,6 +404,7 @@
         const statusOutput = document.getElementById('statusOutput');
         const languageSelect = document.getElementById('languageSelect');
         const zoomSlider = document.getElementById('zoomSlider');
+        const loadingOverlay = document.getElementById('loadingOverlay'); // Corrected reference to the loading overlay
 
         // --- Translations ---
         const translations = {
@@ -417,7 +418,7 @@
                 startButtonDrawing: "Drawing...",
                 restartButton: "🔄 Restart Simulation 🔄",
                 statusInitial: "Click Start to begin the Lucky Draw!", // Updated initial status
-                statusSwirling: "Spheres are floating in space...", // Updated status
+                statusSwirling: "Particles are swirling...", // Updated status
                 statusClashing: "Particles clashing together...", // New status
                 statusSelected: "Lucky Numbers Selected!",
                 messageNoParticles: "No particles to select from!",
@@ -437,7 +438,7 @@
                 startButtonDrawing: "Sorsolás...",
                 restartButton: "🔄 Szimuláció újraindítása 🔄",
                 statusInitial: "Kattintson a Start gombra a szerencsesorsolás megkezdéséhez!", // Updated initial status
-                statusSwirling: "A gömbök a térben lebegnek...", // Updated status
+                statusSwirling: "A részecskék kavarognak...", // Updated status
                 statusClashing: "Részecskék ütköznek...", // New status
                 statusSelected: "Szerencseszámok kiválasztva!",
                 messageNoParticles: "Nincsenek kiválasztható részecskék!",
@@ -505,7 +506,10 @@
 
         // --- Three.js Setup ---
         let scene, camera, renderer, cubeWireframe;
-        let initialParticleColor = new THREE.Color();
+        let instancedParticles; // The THREE.InstancedMesh object
+        let selectedParticleMeshes = []; // To store individual meshes for selected particles
+        const dummy = new THREE.Object3D(); // Helper object for instance matrix updates
+        const dummyColor = new THREE.Color(); // Helper object for instance color updates
 
         // Global parameters - Adjusted for faster random motion and clash
         let particleSpeedFactor = 0.002;
@@ -514,8 +518,8 @@
         let damping = 0.9995;
 
         // Galactic Motion Parameters - Adjusted for a more "floating" effect
-        let gravitationalPull = 0.0;
-        let orbitalVelocityFactor = 0.0;
+        let gravitationalPull = 0.00002; // Initial gravitational pull
+        let orbitalVelocityFactor = 0.0002; // Initial orbital velocity
         let galacticRandomMotion = 0.02; // Increased for faster random motion
 
         // Intergalactic Movement Parameters (Peculiar Velocities)
@@ -525,7 +529,7 @@
         // Cosmic Expansion Parameters
         let cosmicExpansionFactor = 0.00000005;
 
-        // Dynamic swirl parameters (not used for floating, but kept for structure)
+        // Dynamic swirl parameters
         let currentOrbitalVelocityFactor = orbitalVelocityFactor;
         let currentGravitationalPull = gravitationalPull;
         const maxOrbitalVelocityFactor = 0.0015;
@@ -547,25 +551,26 @@
 
         // Lucky particle selection variables
         let numberOfSelectedParticles = 6; // Now dynamic, default to 6
-        let selectedParticlesArray = [];
+        let selectedParticleIndices = new Set(); // Stores indices of selected particles in window.particles
     
         let countdownInterval;
         window.luckyParticleSelected = false; // Expose to window
         let initialZoomValue;
         window.simulationStarted = false; // Controls if animation is active (for swirl/clash)
-        let explosionActive = false; // No longer used for fading, but kept for reference if needed
 
         // New state flags for particle behavior phases
         let isFloating = true; // Particles are just floating around
         let isSwirling = false; // Particles are swirling (briefly before clash)
-        let isClashing = false; // Particles are pulled to center for clash
+        let isClashing = false; // Particles are pulled to center for clash (now represents explosion/hide non-selected)
         let isLiningUp = false; // Selected particles are lining up
 
-        let clashStartTime = 0;
-        const clashDuration = 3000; // 3 seconds for the clash effect
-
-        let lineUpStartTime = 0;
+        // Durations for phases
+        const swirlDuration = 10000; // 10 seconds for the swirl effect
+        const explosionDuration = 3000; // 3 seconds for the clash/explosion effect (non-selected vanish)
         const lineUpDuration = 2000; // 2 seconds for particles to line up and camera to zoom
+
+        let clashStartTime = 0; // Reused for explosion timing
+        let lineUpStartTime = 0;
         let initialCameraZForLineUp;
         const targetCameraZ = 60; // Closer zoom for lined-up particles
 
@@ -579,9 +584,10 @@
         let dynamicTargetParticlePositions = [];
 
         // Global particle color definition
-        const particleColorHue = 270; // Default to purple-ish
+        const particleColorHue = 270; // Changed to 270 for purple
         const particleColorSaturation = 70; // Default saturation
         const particleColorLightness = 60; // Default lightness
+        const initialParticleColor = new THREE.Color().setHSL(particleColorHue / 360, particleColorSaturation / 100, particleColorLightness / 100);
 
         // New variable for highest particle number, linked to input
         let maxParticleNumber = parseInt(maxNumberInput.value);
@@ -609,9 +615,7 @@
             }
 
             scene = new THREE.Scene();
-
-            // Remove background image by setting scene.background to null
-            scene.background = null; 
+            scene.background = null; // Remove background image
 
             // Camera setup
             cameraRadius = parseFloat(zoomSlider.value); // Use initial zoom value as camera radius
@@ -635,10 +639,9 @@
             canvasElement.style.height = `${initialHeight}px`;
             renderer.setSize(initialWidth, initialHeight);
 
-
             renderer.setClearColor(0x000000, 1); // Deep black background
 
-            // Create cube wireframe border
+            // Create cube wireframe border and add directly to scene
             const geometry = new THREE.BoxGeometry(boxSize, boxSize, boxSize);
             const edges = new THREE.EdgesGeometry(geometry);
             cubeWireframe = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x404080 }));
@@ -731,19 +734,17 @@
             camera.position.x = cameraRadius * Math.sin(cameraTheta) * Math.sin(cameraPhi);
             camera.position.y = cameraRadius * Math.cos(cameraTheta);
             camera.position.z = cameraRadius * Math.sin(cameraTheta) * Math.cos(cameraPhi);
-
             camera.updateProjectionMatrix();
         }
 
-        // Function to create a CanvasTexture for text
         function createTextTexture(text, color = 'white', fontSize = 128) {
             const canvas = document.createElement('canvas');
             const context = canvas.getContext('2d');
-            const font = `${fontSize}px Inter, sans-serif`; // Use Inter font
+            const font = `${fontSize}px Inter, sans-serif`;
             context.font = font;
             const textMetrics = context.measureText(text);
-            canvas.width = textMetrics.width + 20; // Add padding
-            canvas.height = fontSize + 20; // Add padding
+            canvas.width = textMetrics.width + 20;
+            canvas.height = fontSize + 20;
 
             context.font = font;
             context.fillStyle = color;
@@ -756,285 +757,305 @@
             return texture;
         }
 
-        // Initialize particles as THREE.Mesh spheres
+        // Initialize particles as THREE.InstancedMesh
         function initParticles() {
-            showLoading();
-            setTimeout(() => { // Allow spinner to show for at least a frame
-                console.log("initParticles: Current window.particles.length before clearing:", window.particles.length); // Debugging log
+            console.log("initParticles: Starting cleanup and re-initialization.");
 
-                // Remove existing particles from scene and dispose geometries/materials
-                window.particles.forEach(p => {
-                    scene.remove(p.mesh);
-                    p.mesh.geometry.dispose();
-                    p.mesh.material.dispose();
-                    if (p.textMesh) {
-                        if (p.mesh.children.includes(p.textMesh)) {
-                            p.mesh.remove(p.textMesh);
-                        }
-                        p.textMesh.geometry.dispose();
-                        p.textMesh.material.dispose();
-                    }
-                });
-                window.particles = []; // Clear the array
-                selectedParticlesArray = []; // Reset selected particles array
-                window.luckyParticleSelected = false; // Reset flag
-                
-                // Reset state flags
-                isFloating = true;
-                isSwirling = false;
-                isClashing = false;
-                isLiningUp = false;
+            // Dispose of previous instanced mesh if it exists
+            if (instancedParticles) {
+                console.log("initParticles: Disposing previous instancedParticles.");
+                scene.remove(instancedParticles);
+                instancedParticles.geometry.dispose();
+                instancedParticles.material.dispose();
+                instancedParticles = null; // Explicitly nullify
+            }
+            // Dispose of previous cube wireframe if it exists
+            if (cubeWireframe) {
+                console.log("initParticles: Disposing previous cubeWireframe.");
+                scene.remove(cubeWireframe);
+                cubeWireframe.geometry.dispose();
+                cubeWireframe.material.dispose();
+                cubeWireframe = null; // Explicitly nullify
+            }
 
-                statusOutput.textContent = translations[currentLanguage].statusInitial; // Reset status text
-
-                // Reset dynamic swirl parameters (not used for floating, but kept for structure)
-                currentOrbitalVelocityFactor = orbitalVelocityFactor;
-                currentGravitationalPull = gravitationalPull;
-
-                console.log("initParticles: maxParticleNumber is", maxParticleNumber); // Debugging log
-
-                const center = new THREE.Vector3(0, 0, 0);
-                const sphereGeometry = new THREE.SphereGeometry(particleRadius, 16, 16);
-
-                initialParticleColor.setHSL(particleColorHue / 360, particleColorSaturation / 100, particleColorLightness / 100);
-
-                try { // Added try-catch for particle creation loop
-                    // Create particles up to maxParticleNumber
-                    for (let i = 0; i < maxParticleNumber; i++) {
-                        let x = (Math.random() - 0.5) * boxSize;
-                        let y = (Math.random() - 0.5) * boxSize;
-                        let z = (Math.random() - 0.5) * boxSize;
-
-                        const particlePos = new THREE.Vector3(x, y, z);
-                        const material = new THREE.MeshBasicMaterial({ color: initialParticleColor.clone() });
-                        const mesh = new THREE.Mesh(sphereGeometry, material);
-                        mesh.position.set(x, y, z);
-                        scene.add(mesh);
-
-                        // Initialize particles with very low velocity for initial "floating"
-                        const initialVelocity = new THREE.Vector3(
-                            (Math.random() - 0.5) * particleSpeedFactor * 0.1,
-                            (Math.random() - 0.5) * particleSpeedFactor * 0.1,
-                            (Math.random() - 0.5) * particleSpeedFactor * 0.1
-                        );
-
-                        window.particles.push({ // Use window.particles
-                            mesh: mesh,
-                            velocity: initialVelocity,
-                            number: i + 1 // Particles are numbered from 1 up to maxParticleNumber
-                        });
-                        // Log first and last particle to confirm pushing
-                        if (i === 0 || i === maxParticleNumber - 1) {
-                            console.log(`initParticles: Pushed particle ${i + 1}. Current array size: ${window.particles.length}`);
-                        }
-                    }
-                } catch (error) {
-                    console.error("Error during particle creation in initParticles:", error); // Ensure this is visible
-                    window.showMessageBox("Error creating particles. Check console for details.");
+            console.log("initParticles: Number of selectedParticleMeshes to dispose:", selectedParticleMeshes.length);
+            selectedParticleMeshes.forEach((p, index) => {
+                console.log(`initParticles: Disposing selectedMesh ${index}.`);
+                scene.remove(p);
+                p.geometry.dispose();
+                p.material.dispose();
+                if (p.children.length > 0 && p.children[0].isMesh) {
+                    p.children[0].geometry.dispose();
+                    p.children[0].material.dispose();
                 }
-                console.log("initParticles: Particles created, total:", window.particles.length); // Debugging log
-                // Reset camera to initial position on re-init
-                camera.position.x = cameraRadius * Math.sin(cameraTheta) * Math.sin(cameraPhi);
-                camera.position.y = cameraRadius * Math.cos(cameraTheta);
-                camera.position.z = cameraRadius * Math.sin(cameraTheta) * Math.cos(cameraPhi);
-                camera.lookAt(0, 0, 0);
-                hideLoading();
-            }, 10);
-        }
-
-        // --- Web Worker Setup for Physics ---
-        let physicsWorker = null;
-        let useWorker = true; // Set to false to disable worker for debugging
-        let workerParticles = [];
-
-        function startPhysicsWorker() {
-            if (!useWorker) return;
-            if (physicsWorker) physicsWorker.terminate();
-            // Use relative path for GitHub Pages compatibility
-            physicsWorker = new Worker('./worker.js');
-            physicsWorker.onmessage = function(e) {
-                const updated = e.data.particles;
-                // Update main thread particle positions/velocities
-                for (let i = 0; i < window.particles.length; i++) {
-                    window.particles[i].mesh.position.set(...updated[i].position);
-                    window.particles[i].velocity.set(...updated[i].velocity);
-                }
-            };
-        }
-
-        function updateParticlesWithWorker(phase) {
-            if (!useWorker || !physicsWorker) return false;
-            // Prepare data for worker
-            const particlesData = window.particles.map(p => ({
-                position: [p.mesh.position.x, p.mesh.position.y, p.mesh.position.z],
-                velocity: [p.velocity.x, p.velocity.y, p.velocity.z]
-            }));
-            const params = {
-                damping, galacticRandomMotion, peculiarVelocity: [peculiarVelocity.x,peculiarVelocity.y,peculiarVelocity.z],
-                cosmicExpansionFactor, boxSize, particleRadius, clashInwardForce: 0.005
-            };
-            const selectedIndices = selectedParticlesArray.map(p => window.particles.indexOf(p));
-            physicsWorker.postMessage({
-                particles: particlesData,
-                params,
-                phase,
-                selectedIndices,
-                time: Date.now(),
-                lineUpStartTime,
-                lineUpDuration,
-                dynamicTargetParticlePositions: dynamicTargetParticlePositions.map(v => [v.x, v.y, v.z])
             });
-            return true;
+            selectedParticleMeshes = [];
+            selectedParticleIndices.clear();
+
+            window.particles = []; // Clear particle data array
+            console.log("initParticles: window.particles cleared.");
+            
+            // Reset state flags
+            isFloating = true;
+            isSwirling = false; // Start in floating mode
+            isClashing = false;
+            isLiningUp = false;
+            window.luckyParticleSelected = false;
+
+            statusOutput.textContent = translations[currentLanguage].statusInitial;
+
+            // Reset dynamic swirl parameters to initial values
+            currentOrbitalVelocityFactor = orbitalVelocityFactor;
+            currentGravitationalPull = gravitationalPull;
+
+            maxParticleNumber = parseInt(maxNumberInput.value); // Ensure maxParticleNumber is updated
+
+            // Re-create cube wireframe border
+            const geometry = new THREE.BoxGeometry(boxSize, boxSize, boxSize);
+            const edges = new THREE.EdgesGeometry(geometry);
+            cubeWireframe = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x404080 }));
+            scene.add(cubeWireframe);
+            console.log("initParticles: New cubeWireframe added to scene.");
+
+            const sphereGeometry = new THREE.SphereGeometry(particleRadius, 16, 16);
+            const material = new THREE.MeshBasicMaterial(); 
+
+            instancedParticles = new THREE.InstancedMesh(sphereGeometry, material, maxParticleNumber);
+            instancedParticles.instanceMatrix.setUsage(THREE.DynamicDrawUsage); // Allow frequent updates
+            instancedParticles.instanceColor = new THREE.BufferAttribute(new Float32Array(maxParticleNumber * 3), 3); // For per-instance color
+
+            scene.add(instancedParticles); // Add to scene directly
+            console.log("initParticles: New instancedParticles created and added to scene.");
+
+            try {
+                for (let i = 0; i < maxParticleNumber; i++) {
+                    let x = (Math.random() - 0.5) * boxSize;
+                    let y = (Math.random() - 0.5) * boxSize;
+                    let z = (Math.random() - 0.5) * boxSize;
+
+                    const position = new THREE.Vector3(x, y, z);
+                    const velocity = new THREE.Vector3(
+                        (Math.random() - 0.5) * galacticRandomMotion * 0.5, // Initial floating motion
+                        (Math.random() - 0.5) * galacticRandomMotion * 0.5,
+                        (Math.random() - 0.5) * galacticRandomMotion * 0.5
+                    );
+
+                    window.particles.push({
+                        position: position,
+                        velocity: velocity,
+                        number: i + 1,
+                        originalIndex: i // Store original index for instancing
+                    });
+
+                    // Set initial matrix and color for the instance
+                    dummy.position.copy(position);
+                    dummy.updateMatrix();
+                    instancedParticles.setMatrixAt(i, dummy.matrix);
+                    
+                    // Set initial color to purple
+                    dummyColor.setHSL(particleColorHue / 360, particleColorSaturation / 100, particleColorLightness / 100);
+                    instancedParticles.instanceColor.setXYZ(i, dummyColor.r, dummyColor.g, dummyColor.b);
+                }
+                instancedParticles.instanceMatrix.needsUpdate = true;
+                instancedParticles.instanceColor.needsUpdate = true;
+                console.log("initParticles: Instanced particles populated and buffers updated.");
+
+            } catch (error) {
+                console.error("Error during particle creation in initParticles:", error);
+                window.showMessageBox("Error creating particles. Check console for details.");
+            }
+            console.log("initParticles: Particles created, total:", window.particles.length);
+
+            // Reset camera position
+            camera.position.x = cameraRadius * Math.sin(cameraTheta) * Math.sin(cameraPhi);
+            camera.position.y = cameraRadius * Math.cos(cameraTheta);
+            camera.position.z = cameraRadius * Math.sin(cameraTheta) * Math.cos(cameraPhi);
+            camera.lookAt(0, 0, 0);
+            console.log("initParticles: Camera reset.");
+
+            loadingOverlay.style.display = 'none'; // Hide loading overlay
+            console.log("initParticles: Loading overlay hidden. Initialization complete.");
         }
 
-        // Animation loop
         function animate() {
             requestAnimationFrame(animate);
-            let phase = isFloating ? 'floating' : isSwirling ? 'swirling' : isClashing ? 'clashing' : isLiningUp ? 'liningUp' : 'floating';
-            if (!updateParticlesWithWorker(phase)) {
-                updateParticles(); // fallback to main thread if worker not used
-            }
+            updateParticles();
             renderer.render(scene, camera);
         }
 
-        // Update particle positions and handle interactions/boundaries
         function updateParticles() {
             const center = new THREE.Vector3(0, 0, 0);
 
-            // Slowly change the direction of peculiar velocity (always active)
             peculiarVelocity.x += (Math.random() - 0.5) * peculiarVelocityChangeRate;
             peculiarVelocity.y += (Math.random() - 0.5) * peculiarVelocityChangeRate;
             peculiarVelocity.z += (Math.random() - 0.5) * peculiarVelocityChangeRate;
 
             for (let i = 0; i < window.particles.length; i++) {
                 const p = window.particles[i];
-                const isSelected = selectedParticlesArray.includes(p);
+                const isSelected = selectedParticleIndices.has(i);
+
+                // If this particle is selected, and we're in the lining up phase, skip its instanced update
+                // It will be handled by its individual mesh in selectedParticleMeshes
+                if (isLiningUp && isSelected) {
+                    // Update individual mesh's position
+                    const selectedMesh = selectedParticleMeshes.find(mesh => mesh.userData.originalIndex === i);
+                    if (selectedMesh) {
+                        const elapsedTime = Date.now() - lineUpStartTime;
+                        let t = Math.min(1, elapsedTime / lineUpDuration);
+                        const selectedIndexInArray = selectedParticleMeshes.indexOf(selectedMesh);
+                        if (dynamicTargetParticlePositions[selectedIndexInArray]) {
+                            selectedMesh.position.lerp(dynamicTargetParticlePositions[selectedIndexInArray], t);
+                             // Keep text facing camera
+                            selectedMesh.children[0].lookAt(camera.position); // Text is child[0]
+                        }
+                    }
+                    continue; // Skip instanced update for selected particles during line-up
+                }
 
                 // Apply damping
                 p.velocity.multiplyScalar(damping);
 
-                if (isFloating || isSwirling) { // Initial floating or swirling phase
+                if (isFloating) {
+                    // Gentle floating motion
+                    p.velocity.x += (Math.random() - 0.5) * galacticRandomMotion * 0.5;
+                    p.velocity.y += (Math.random() - 0.5) * galacticRandomMotion * 0.5;
+                    p.velocity.z += (Math.random() - 0.5) * galacticRandomMotion * 0.5;
+                    p.velocity.add(peculiarVelocity.clone().multiplyScalar(0.1)); // Reduced peculiar velocity for floating
+                    const cosmicExpansionForce = new THREE.Vector3().subVectors(p.position, center).normalize().multiplyScalar(cosmicExpansionFactor * 0.1);
+                    p.velocity.add(cosmicExpansionForce);
+
+                    // Keep initial purple color during floating
+                    dummyColor.setHSL(particleColorHue / 360, particleColorSaturation / 100, particleColorLightness / 100);
+                    instancedParticles.instanceColor.setXYZ(p.originalIndex, dummyColor.r, dummyColor.g, dummyColor.b);
+
+                } else if (isSwirling) {
+                    // Galactic swirl motion
+                    const directionFromCenter = new THREE.Vector3().subVectors(p.position, center);
+                    const distanceToCenter = directionFromCenter.length();
+
+                    // Gravitational Pull (inward)
+                    const gravitationalForce = directionFromCenter.normalize().multiplyScalar(-distanceToCenter * currentGravitationalPull);
+                    p.velocity.add(gravitationalForce);
+
+                    // Orbital Velocity (tangential)
+                    const axis = new THREE.Vector3(0, 1, 0); // Galactic plane is Y-axis for rotation
+                    const tangentialVelocity = axis.cross(directionFromCenter).normalize().multiplyScalar(distanceToCenter * currentOrbitalVelocityFactor);
+                    p.velocity.add(tangentialVelocity);
+
+                    // Random Galactic Motion
                     p.velocity.x += (Math.random() - 0.5) * galacticRandomMotion;
                     p.velocity.y += (Math.random() - 0.5) * galacticRandomMotion;
                     p.velocity.z += (Math.random() - 0.5) * galacticRandomMotion;
+
+                    // Intergalactic Movement (Peculiar Velocities)
                     p.velocity.add(peculiarVelocity);
-                    const cosmicExpansionForce = new THREE.Vector3().subVectors(p.mesh.position, center).normalize().multiplyScalar(cosmicExpansionFactor);
+
+                    // Cosmic Expansion (subtle outward push)
+                    const cosmicExpansionForce = new THREE.Vector3().subVectors(p.position, center).normalize().multiplyScalar(cosmicExpansionFactor);
                     p.velocity.add(cosmicExpansionForce);
 
-                    // Dynamic color shift during floating/swirling
-                    p.mesh.material.color.setHSL(
+                    // Dynamic color shift during swirling
+                    dummyColor.setHSL(
                         (particleColorHue / 360 + Math.sin(Date.now() * 0.0001 + i * 0.01) * 0.05) % 1,
                         particleColorSaturation / 100,
                         particleColorLightness / 100
                     );
+                    instancedParticles.instanceColor.setXYZ(p.originalIndex, dummyColor.r, dummyColor.g, dummyColor.b);
 
-                } else if (isClashing) { // Clashing phase
-                    // Strong inward pull for all particles during clash
-                    const clashInwardForce = 0.005; // Define clash force here
-                    const directionToCenter = new THREE.Vector3().subVectors(center, p.mesh.position).normalize();
-                    p.velocity.add(directionToCenter.multiplyScalar(clashInwardForce));
+                    // Gradually increase swirl parameters during swirling phase
+                    currentOrbitalVelocityFactor = Math.min(maxOrbitalVelocityFactor, currentOrbitalVelocityFactor + swirlIncreaseRate);
+                    currentGravitationalPull = Math.min(maxGravitationalPull, currentGravitationalPull + swirlIncreaseRate * 0.1);
 
-                    // Dynamic color shift during clash
-                    p.mesh.material.color.setHSL(
-                        (particleColorHue / 360 + Math.sin(Date.now() * 0.0001 + i * 0.01) * 0.05) % 1,
-                        particleColorSaturation / 100,
-                        particleColorLightness / 100
-                    );
-
-                } else if (isLiningUp) { // Lining up phase
+                } else if (isClashing) { // This is the "explosion" phase where non-selected vanish
                     if (isSelected) {
-                        // Selected particles interpolate to target positions
-                        const elapsedTime = Date.now() - lineUpStartTime;
-                        let t = Math.min(1, elapsedTime / lineUpDuration);
-                        const selectedIndex = selectedParticlesArray.indexOf(p);
-                        if (selectedIndex !== -1 && dynamicTargetParticlePositions[selectedIndex]) { // Use dynamic positions
-                            p.mesh.position.lerp(dynamicTargetParticlePositions[selectedIndex], t);
-                            p.velocity.set(0, 0, 0); // Stop other forces for selected particles during line up
-                        }
-                        p.mesh.material.color.setHSL(particleColorHue / 360, particleColorSaturation / 100, particleColorLightness / 100);
+                        // For selected particles, apply inward force
+                        const clashInwardForce = 0.005;
+                        const directionToCenter = new THREE.Vector3().subVectors(center, p.position).normalize();
+                        p.velocity.add(directionToCenter.multiplyScalar(clashInwardForce));
+
+                        // Keep selected particles vibrant
+                        dummyColor.setHSL(particleColorHue / 360, particleColorSaturation / 100, particleColorLightness / 100);
+                        instancedParticles.instanceColor.setXYZ(p.originalIndex, dummyColor.r, dummyColor.g, dummyColor.b);
                     } else {
-                        // Non-selected particles resume floating after clash ends
-                        p.velocity.x += (Math.random() - 0.5) * galacticRandomMotion;
-                        p.velocity.y += (Math.random() - 0.5) * galacticRandomMotion;
-                        p.velocity.z += (Math.random() - 0.5) * galacticRandomMotion;
-                        p.velocity.add(peculiarVelocity);
-                        const cosmicExpansionForce = new THREE.Vector3().subVectors(p.mesh.position, center).normalize().multiplyScalar(cosmicExpansionFactor);
-                        p.velocity.add(cosmicExpansionForce);
-                        // Keep their dynamic color shift
-                        p.mesh.material.color.setHSL(
-                            (particleColorHue / 360 + Math.sin(Date.now() * 0.0001 + i * 0.01) * 0.05) % 1,
-                            particleColorSaturation / 100,
-                            particleColorLightness / 100
-                        );
+                        // Non-selected particles are already scaled to zero in autoSelectLuckyParticles,
+                        // so no movement or color update is needed here for them.
+                    }
+                } else if (isLiningUp) {
+                    // Non-selected particles are already hidden
+                    if (isSelected) {
+                        // Keep selected particles vibrant during line up
+                        dummyColor.setHSL(particleColorHue / 360, particleColorSaturation / 100, particleColorLightness / 100);
+                        instancedParticles.instanceColor.setXYZ(p.originalIndex, dummyColor.r, dummyColor.g, dummyColor.b);
                     }
                 }
 
-                // Ensure minimum speed for continuous floating (only if not lining up for non-selected)
                 const minContinuousSpeed = 0.0005;
+                // Apply min continuous speed only if not lining up AND not selected (or if floating)
                 if (!isLiningUp && p.velocity.length() < minContinuousSpeed) {
                     p.velocity.x += (Math.random() - 0.5) * particleSpeedFactor * 0.5;
                     p.velocity.y += (Math.random() - 0.5) * particleSpeedFactor * 0.5;
                     p.velocity.z += (Math.random() - 0.5) * particleSpeedFactor * 0.5;
                 }
 
-                p.mesh.position.add(p.velocity);
+                p.position.add(p.velocity);
 
-                // Boundary collision (bounce off cube walls) and clamp position
                 const halfBox = boxSize / 2;
                 let collided = false;
 
-                if (p.mesh.position.x + particleRadius > halfBox) {
+                if (p.position.x + particleRadius > halfBox) {
                     p.velocity.x *= -1;
-                    p.mesh.position.x = halfBox - particleRadius;
+                    p.position.x = halfBox - particleRadius;
                     collided = true;
-                } else if (p.mesh.position.x - particleRadius < -halfBox) {
+                } else if (p.position.x - particleRadius < -halfBox) {
                     p.velocity.x *= -1;
-                    p.mesh.position.x = -halfBox + particleRadius;
+                    p.position.x = -halfBox + particleRadius;
                     collided = true;
                 }
 
-                if (p.mesh.position.y + particleRadius > halfBox) {
+                if (p.position.y + particleRadius > halfBox) {
                     p.velocity.y *= -1;
-                    p.mesh.position.y = halfBox - particleRadius;
+                    p.position.y = halfBox - particleRadius;
                     collided = true;
-                } else if (p.mesh.position.y - particleRadius < -halfBox) {
+                } else if (p.position.y - particleRadius < -halfBox) {
                     p.velocity.y *= -1;
-                    p.mesh.position.y = -halfBox + particleRadius;
+                    p.position.y = -halfBox + particleRadius;
                     collided = true;
                 }
 
-                if (p.mesh.position.z + particleRadius > halfBox) {
+                if (p.position.z + particleRadius > halfBox) {
                     p.velocity.z *= -1;
-                    p.mesh.position.z = halfBox - particleRadius;
+                    p.position.z = halfBox - particleRadius;
                     collided = true;
-                } else if (p.mesh.position.z - particleRadius < -halfBox) {
+                } else if (p.position.z - particleRadius < -halfBox) {
                     p.velocity.z *= -1;
-                    p.mesh.position.z = -halfBox + particleRadius;
+                    p.position.z = -halfBox + particleRadius;
                     collided = true;
                 }
 
                 // Change color if collision occurred (only before selection)
                 if (collided && !window.luckyParticleSelected) {
-                    const newColor = new THREE.Color();
-                    const newHue = Math.random();
-                    const newSaturation = 0.7 + Math.random() * 0.3;
-                    const newLightness = 0.5 + Math.random() * 0.3;
-                    newColor.setHSL(newHue, newSaturation, newLightness);
-                    p.mesh.material.color.copy(newColor);
+                    // Generate a new random color for collision with wider range for vibrancy
+                    dummyColor.setHSL(Math.random(), 0.8 + Math.random() * 0.2, 0.6 + Math.random() * 0.2);
+                    instancedParticles.instanceColor.setXYZ(p.originalIndex, dummyColor.r, dummyColor.g, dummyColor.b);
+                }
+
+                // Update the instance matrix for the current particle
+                // Only update instanced mesh if not lining up, or if it's a non-selected particle
+                // (selected particles in lining up phase are handled by individual meshes)
+                if (!isLiningUp || (isLiningUp && !isSelected)) {
+                    dummy.position.copy(p.position);
+                    // If it's a non-selected particle during the explosion phase, its scale is already zeroed out.
+                    // This ensures it remains hidden.
+                    dummy.updateMatrix();
+                    instancedParticles.setMatrixAt(p.originalIndex, dummy.matrix);
                 }
             }
-            // Camera zoom animation during lining up (only if isLiningUp is true)
-            if (isLiningUp) {
-                const elapsedTime = Date.now() - lineUpStartTime;
-                let t = Math.min(1, elapsedTime / lineUpDuration);
-                camera.position.z = THREE.MathUtils.lerp(initialCameraZForLineUp, targetCameraZ, t);
-                camera.lookAt(0, 0, 0); // Keep camera focused on the center
-            }
+            instancedParticles.instanceMatrix.needsUpdate = true;
+            instancedParticles.instanceColor.needsUpdate = true;
         }
 
         function onWindowResize() {
             const canvasElement = document.getElementById('particleCanvas');
-            // Recalculate size based on current window dimensions and max constraints
             const newWidth = Math.min(window.innerWidth * 0.8, 1536);
             const newHeight = Math.min(window.innerHeight * 0.7, 864);
 
@@ -1045,7 +1066,6 @@
             camera.updateProjectionMatrix();
             renderer.setSize(newWidth, newHeight);
 
-            // Adjust game-content padding if sidebar is open
             if (sidebar.classList.contains('open')) {
                 document.querySelector('.game-content').style.paddingLeft = '280px';
             } else {
@@ -1053,45 +1073,39 @@
             }
         }
 
-        // Function to update initial camera zoom (from slider)
-        window.updateInitialCameraZoom = function(value) { // Expose to window
-            cameraRadius = parseFloat(value); // Update camera radius
-            // Recalculate camera position immediately based on new radius and current angles
+        window.updateInitialCameraZoom = function(value) {
+            cameraRadius = parseFloat(value);
+            // Recalculate camera position based on updated spherical coordinates and new radius
             camera.position.x = cameraRadius * Math.sin(cameraTheta) * Math.sin(cameraPhi);
             camera.position.y = cameraRadius * Math.cos(cameraTheta);
             camera.position.z = cameraRadius * Math.sin(cameraTheta) * Math.cos(cameraPhi);
-            camera.updateProjectionMatrix(); // Important to update projection matrix after position change
+            camera.updateProjectionMatrix();
         }
 
-        // Function to update the maximum particle number from the input
         maxNumberInput.addEventListener('change', function() {
             const newMax = parseInt(this.value);
-            if (isNaN(newMax) || newMax < numberOfSelectedParticles) { // Ensure minimum of 6 particles
-                this.value = maxParticleNumber; // Revert to old value if invalid
-                this.classList.add('invalid'); // Add invalid class for visual feedback
-                setTimeout(() => this.classList.remove('invalid'), 1500); // Remove after 1.5s
+            if (isNaN(newMax) || newMax < numberOfSelectedParticles) {
+                this.value = maxParticleNumber;
+                this.classList.add('invalid');
+                setTimeout(() => this.classList.remove('invalid'), 1500);
                 window.showMessageBox(translations[currentLanguage].messageInvalidNumberInput.replace('{minParticles}', numberOfSelectedParticles));
                 return;
             }
             maxParticleNumber = newMax;
-            // Restart simulation to apply the new number range
             window.restartSimulation();
         });
 
-        // Event listener for the new "Number of Lucky Numbers" input
         numLuckyNumbersInput.addEventListener('change', function() {
             const newNum = parseInt(this.value);
             if (isNaN(newNum) || newNum < 1 || newNum > 10) {
-                this.value = numberOfSelectedParticles; // Revert to old value
+                this.value = numberOfSelectedParticles;
                 this.classList.add('invalid');
                 setTimeout(() => this.classList.remove('invalid'), 1500);
                 window.showMessageBox(translations[currentLanguage].messageInvalidLuckyNumberInput.replace('{min}', 1).replace('{max}', 10));
                 return;
             }
             numberOfSelectedParticles = newNum;
-            // No need to restart simulation here, as it will be applied on the next draw
         });
-
 
         function displayLuckyNumbersOnly(selectedNumbersString) {
             const t = translations[currentLanguage];
@@ -1101,71 +1115,76 @@
             window.showMessageBox(message);
         }
 
-
-        // --- Game Flow Functions ---
-        // This function is now the primary entry point for starting/restarting the game
         function newGame() {
-            window.hideMessageBox(); // Hide any open message box
-            window.restartSimulation(); // Reset the 3D simulation
-            sidebar.classList.add('open'); // Ensure sidebar is open for new game setup
-            document.querySelector('.game-content').style.paddingLeft = '280px'; // Adjust padding
-            // No immediate startLuckyDraw here, as the user will click the button
+            window.hideMessageBox();
+            window.restartSimulation();
+            sidebar.classList.add('open');
+            document.querySelector('.game-content').style.paddingLeft = '280px';
         }
 
-        // startLuckyDraw is now exposed globally via window.startLuckyDraw in the module script
         window.startLuckyDraw = function() {
-            if (isSwirling || isClashing || isLiningUp) { // Already in a process
+            if (isClashing || isLiningUp) { // Only check clashing and lining up, allow restart from swirling
                 window.restartSimulation();
                 return;
             }
-            isFloating = false; // Stop floating
-            isSwirling = true; // Start swirling (briefly)
+            isFloating = false;
+            isSwirling = true; // Swirling starts immediately
             statusOutput.textContent = translations[currentLanguage].statusSwirling;
             startButton.textContent = translations[currentLanguage].startButtonDrawing;
             startButton.disabled = true;
 
+            // After swirlDuration, transition to clash/explosion phase
             setTimeout(() => {
-                isSwirling = false; // End swirling
-                isClashing = true; // Start clashing
-                clashStartTime = Date.now(); // Record clash start time
-                statusOutput.textContent = translations[currentLanguage].statusClashing; // Update status
+                isSwirling = false;
+                isClashing = true; // This now signifies the explosion phase
+                clashStartTime = Date.now(); // Reuse clashStartTime for explosion timing
+                statusOutput.textContent = translations[currentLanguage].statusClashing; // Status for explosion
 
-                window.autoSelectLuckyParticles(); // Select particles and trigger clash behavior
-            }, 5000); // Swirling duration before clash (reduced to 5 seconds for quicker action)
+                // Trigger auto-selection and start explosion effect
+                window.autoSelectLuckyParticles();
+            }, swirlDuration); // Use the longer swirlDuration
         };
 
-        // Expose autoSelectLuckyParticles to the global scope
         window.autoSelectLuckyParticles = function() {
-            console.log("autoSelectLuckyParticles: Current window.particles array length:", window.particles.length); // Debugging log
-            if (window.particles.length === 0) { // Use window.particles
+            if (window.particles.length === 0) {
                 window.showMessageBox(translations[currentLanguage].messageNoParticles);
-                startButton.disabled = false; // Re-enable start button
-                startButton.textContent = translations[currentLanguage].startButton; // Reset button text
+                startButton.disabled = false;
+                startButton.textContent = translations[currentLanguage].startButton;
                 return;
             }
 
-            selectedParticlesArray = [];
-            // Create a fresh array of available indices for unbiased selection.
-            // This ensures every particle has an equal chance of being picked.
-            const availableIndices = Array.from({ length: window.particles.length }, (_, i) => i);
+            selectedParticleIndices.clear();
+            selectedParticleMeshes.forEach(p => { // Remove previous individual meshes
+                scene.remove(p); // Remove from scene
+                p.geometry.dispose();
+                p.material.dispose();
+                if (p.children.length > 0 && p.children[0].isMesh) {
+                    p.children[0].geometry.dispose();
+                    p.children[0].material.dispose();
+                }
+            });
+            selectedParticleMeshes = [];
 
-            // Dynamically generate target positions for the selected particles
+            const availableIndices = Array.from({ length: window.particles.length }, (_, i) => i);
             dynamicTargetParticlePositions = generateTargetParticlePositions(numberOfSelectedParticles);
 
             for (let i = 0; i < numberOfSelectedParticles; i++) {
                 if (availableIndices.length === 0) break;
 
-                // Randomly select an index from the available pool.
-                // This provides equal probability for all remaining particles.
                 const randomIndex = Math.floor(Math.random() * availableIndices.length);
-                // Get the actual particle index and remove it from the available pool.
-                // This ensures independence of outcomes and no duplicate selections.
-                const particleIndex = availableIndices.splice(randomIndex, 1)[0];
-                const p = window.particles[particleIndex]; // Use window.particles
+                const particleOriginalIndex = availableIndices.splice(randomIndex, 1)[0];
+                const p = window.particles[particleOriginalIndex];
 
-                selectedParticlesArray.push(p);
+                selectedParticleIndices.add(particleOriginalIndex); // Mark as selected
 
-                // Add text mesh for each selected particle
+                // Create a new individual mesh for the selected particle
+                const selectedMeshGeometry = new THREE.SphereGeometry(particleRadius, 16, 16);
+                const selectedMeshMaterial = new THREE.MeshBasicMaterial({ color: initialParticleColor.clone() });
+                const selectedMesh = new THREE.Mesh(selectedMeshGeometry, selectedMeshMaterial);
+                selectedMesh.position.copy(p.position); // Copy current position
+                selectedMesh.userData.originalIndex = particleOriginalIndex; // Store original index for lookup
+
+                // Add text mesh
                 const textTexture = createTextTexture(String(p.number), 'white', 128);
                 const textMaterial = new THREE.MeshBasicMaterial({ map: textTexture, transparent: true, side: THREE.DoubleSide });
                 const textScaleFactor = 0.5;
@@ -1173,59 +1192,78 @@
                     textTexture.image.width / 100 * textScaleFactor,
                     textTexture.image.height / 100 * textScaleFactor
                 );
-                p.textMesh = new THREE.Mesh(textGeometry, textMaterial);
-                p.textMesh.position.z = particleRadius + 0.1;
-                p.mesh.add(p.textMesh);
+                const textMesh = new THREE.Mesh(textGeometry, textMaterial);
+                textMesh.position.z = particleRadius + 0.1;
+                selectedMesh.add(textMesh);
+
+                scene.add(selectedMesh); // Add to scene
+                selectedParticleMeshes.push(selectedMesh);
             }
 
-            window.luckyParticleSelected = true; // Flag indicating selection has occurred
+            // Hide non-selected particles by scaling them to zero immediately after selection
+            for (let i = 0; i < window.particles.length; i++) {
+                const p = window.particles[i];
+                if (!selectedParticleIndices.has(i)) {
+                    dummy.position.copy(p.position); // Keep position for consistency, but scale to 0
+                    dummy.scale.set(0, 0, 0); // Scale to zero to hide
+                    dummy.updateMatrix();
+                    instancedParticles.setMatrixAt(p.originalIndex, dummy.matrix);
+                } else {
+                    // For selected particles, ensure they are visible (scale 1)
+                    dummy.position.copy(p.position);
+                    dummy.scale.set(1, 1, 1);
+                    dummy.updateMatrix();
+                    instancedParticles.setMatrixAt(p.originalIndex, dummy.matrix);
+                }
+            }
+            instancedParticles.instanceMatrix.needsUpdate = true;
 
-            const selectedNumbers = selectedParticlesArray.map(p => p.number).join(', ');
+            window.luckyParticleSelected = true; // This flag prevents further collision color changes
+
+            const selectedNumbers = Array.from(selectedParticleIndices).map(index => window.particles[index].number).join(', ');
             
-            // Set timeout to end clashing and start lining up
+            // Transition from clash/explosion to lining up after explosionDuration
             setTimeout(() => {
-                isClashing = false; // End clashing
-                isLiningUp = true; // Start lining up
-                lineUpStartTime = Date.now(); // Record line up start time
-                statusOutput.textContent = translations[currentLanguage].statusSelected; // Update status
+                isClashing = false; // Explosion phase ends
+                isLiningUp = true;
+                lineUpStartTime = Date.now();
+                statusOutput.textContent = translations[currentLanguage].statusSelected;
 
-                // The displayLuckyNumbersOnly will be called after lineUpDuration
                 setTimeout(() => {
-                    isLiningUp = false; // End lining up
+                    isLiningUp = false;
                     displayLuckyNumbersOnly(selectedNumbers);
                     startButton.disabled = false;
                     startButton.textContent = translations[currentLanguage].startButton;
                 }, lineUpDuration);
-            }, clashDuration); // Clash duration
+            }, explosionDuration); // Use explosionDuration here
         };
 
-        // Expose restartSimulation to the global scope
         window.restartSimulation = function() {
-            clearInterval(countdownInterval); // Still good to clear any lingering interval, though not strictly needed here
+            console.log("restartSimulation: Initiating restart.");
+            clearInterval(countdownInterval);
             
-            // Reset all state flags
             isFloating = true;
             isSwirling = false;
             isClashing = false;
             isLiningUp = false;
             window.luckyParticleSelected = false;
 
-            startButton.disabled = false; // Re-enable start button
-            startButton.textContent = translations[currentLanguage].startButton; // Reset button text
+            startButton.disabled = false;
+            startButton.textContent = translations[currentLanguage].startButton;
 
             initParticles(); // Re-initialize particles and scene
+            console.log("restartSimulation: initParticles called.");
 
-            // Reset camera position to initial state
+            // Reset camera position
             camera.position.x = cameraRadius * Math.sin(cameraTheta) * Math.sin(cameraPhi);
             camera.position.y = cameraRadius * Math.cos(cameraTheta);
             camera.position.z = cameraRadius * Math.sin(cameraTheta) * Math.cos(cameraPhi);
             camera.lookAt(0, 0, 0);
+            console.log("restartSimulation: Camera reset.");
         };
 
-        // Function to toggle sidebar visibility
         function toggleSidebar() {
             sidebar.classList.toggle('open');
-            // Adjust game-content padding based on sidebar state
             if (sidebar.classList.contains('open')) {
                 document.querySelector('.game-content').style.paddingLeft = '280px';
             } else {
@@ -1233,37 +1271,25 @@
             }
         }
 
-
-        // Initialize and start animation when the window loads
         window.onload = async function() {
             console.log("window.onload: Starting initialization.");
             
-            // Set initial language
             window.setLanguage(languageSelect.value);
-
-            // Set initial value for numberOfSelectedParticles from input
             numberOfSelectedParticles = parseInt(numLuckyNumbersInput.value);
 
-            // Initialize Three.js and particles
             initThreeJS();
             onWindowResize();
 
-            // Attach event listeners to buttons
             startButton.addEventListener('click', window.startLuckyDraw);
             restartButton.addEventListener('click', window.restartSimulation);
             messageBoxOkButton.addEventListener('click', window.hideMessageBox);
-            messageBoxNewGameButton.addEventListener('click', newGame); // New game button now calls newGame()
-            sidebarToggleButton.addEventListener('click', toggleSidebar); // Attach toggle button listener
+            messageBoxNewGameButton.addEventListener('click', newGame);
+            sidebarToggleButton.addEventListener('click', toggleSidebar);
 
-            // Open sidebar by default on load
             sidebar.classList.add('open');
             document.querySelector('.game-content').style.paddingLeft = '280px';
 
-            // Initial state: particles are floating, not swirling intensely
-            // The `updateParticles` function will handle the floating motion when `isFloating` is true.
             statusOutput.textContent = translations[currentLanguage].statusInitial;
-
-            startPhysicsWorker();
 
             console.log("window.onload: Initialization complete.");
         };

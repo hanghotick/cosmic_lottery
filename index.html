@@ -196,6 +196,51 @@
         }
 
         /* Lucky History Styling - Removed */
+
+        /* Restore UI visibility and layering */
+        .controls-output-container, #countdownDisplay, #messageBox, #statusOutput, .slider-group, #startButton, #restartButton, #personalLuckyInput, #personalLuckyInputLabel, #zoomSlider, #zoomSliderLabel, #languageSelect {
+            display: flex !important;
+            opacity: 1 !important;
+            z-index: 10 !important;
+        }
+        .controls-output-container {
+            position: relative;
+            z-index: 10;
+            background-color: #1a1a2e;
+            padding: 1.5rem;
+            border-radius: 1rem;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+        #countdownDisplay {
+            z-index: 1001 !important;
+            display: none;
+        }
+        #messageBox {
+            z-index: 2000 !important;
+            display: none;
+        }
+        #statusOutput {
+            z-index: 11 !important;
+            display: flex !important;
+        }
+        .slider-group {
+            z-index: 11 !important;
+            display: flex !important;
+        }
+        #startButton, #restartButton {
+            z-index: 12 !important;
+            display: inline-block !important;
+        }
+        #personalLuckyInput, #personalLuckyInputLabel, #zoomSlider, #zoomSliderLabel, #languageSelect {
+            z-index: 12 !important;
+        }
+        /* Ensure starfield is always behind UI */
+        #starfieldCanvas {
+            z-index: 0 !important;
+        }
+        #particleCanvas {
+            z-index: 1 !important;
+        }
     </style>
 </head>
 <body>

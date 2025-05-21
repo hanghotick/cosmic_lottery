@@ -3,603 +3,604 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Futuristic Particle System</title>
+    <title>Stellar Fortune</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
-        /* --- Dynamic UI Scaling & Responsive Design --- */
-        html, body {
-            width: 100vw;
-            height: 100vh;
-            min-height: 100vh;
-            min-width: 100vw;
-            box-sizing: border-box;
-            font-size: clamp(14px, 1.2vw + 1vh, 22px); /* Dynamic base font size */
-        }
+        /* Apply Inter font and basic body styling */
         body {
             font-family: "Inter", sans-serif;
             margin: 0;
-            overflow: hidden;
-            background-color: #000;
+            overflow: hidden; /* Prevent scrollbars */
+            background-color: #000000; /* Deep black background */
             display: flex;
-            flex-direction: column;
+            flex-direction: column; /* Arrange items vertically */
+            justify-content: flex-start;
             align-items: center;
             min-height: 100vh;
-            padding: 0;
+            padding: 0; /* Remove body padding as main-game-screen handles it */
+            box-sizing: border-box;
+            font-size: 16px; /* Base font size for rem units */
         }
-        /* --- 3D Canvas Sizing --- */
-        #particleCanvas {
-            display: block;
-            background-color: #000;
-            border-radius: 1.2rem;
-            box-shadow: 0 0.3rem 2rem rgba(0,0,0,0.5);
-            width: 85vw;
-            max-width: 1600px;
-            min-width: 320px;
-            height: 75vh;
-            max-height: 810px;
-            min-height: 200px;
-            margin: 2.5vh auto 0 auto;
-            cursor: grab;
-            z-index: 1;
+
+        /* Main Game Screen (now always visible from start) */
+        .main-game-screen {
+            display: flex;
+            width: 100%;
+            min-height: 100vh;
+            opacity: 1; /* Always visible */
+            visibility: visible; /* Always visible */
+            position: relative; /* For sidebar positioning */
+            justify-content: center; /* Center content horizontally */
+            align-items: center;
+            padding: 1rem; /* Add padding here instead of body */
+            box-sizing: border-box;
         }
-        #particleCanvas:active {
-            cursor: grabbing;
-        }
-        /* --- Starfield/Nebula Canvas --- */
-        #starfieldCanvas {
+
+        /* Sidebar Styles */
+        .sidebar {
             position: fixed;
-            top: 0; left: 0;
-            width: 100vw;
-            height: 100vh;
-            z-index: 0 !important;
-            pointer-events: none;
+            top: 0;
+            left: 0;
+            height: 100%;
+            width: 280px; /* Adjust width as needed */
+            background-color: #1a1a2e; /* Dark background */
+            color: white;
+            transform: translateX(-100%); /* Hidden by default */
+            transition: transform 0.3s ease-in-out;
+            z-index: 990; /* Below message box, above game content */
+            padding: 1rem;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.5);
         }
-        /* --- Control Panel --- */
+
+        .sidebar.open {
+            transform: translateX(0);
+        }
+
+        .sidebar-toggle-button {
+            position: fixed;
+            top: 1rem;
+            left: 1rem;
+            background-color: #6a05ad;
+            color: white;
+            border: none;
+            border-radius: 0.5rem;
+            padding: 0.75rem 1rem;
+            font-size: 1.5rem;
+            cursor: pointer;
+            z-index: 995; /* Above sidebar, below message box */
+            transition: background-color 0.3s ease;
+        }
+
+        .sidebar-toggle-button:hover {
+            background-color: #8c07d3;
+        }
+
+        .sidebar-content {
+            width: 100%;
+            padding-top: 3rem; /* Space for toggle button */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .game-content {
+            flex-grow: 1; /* Takes up remaining space */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start; /* Align canvas to top within its area */
+            padding-left: 0; /* No padding initially, will adjust if sidebar is open */
+            transition: padding-left 0.3s ease-in-out;
+            height: 100vh; /* Ensure it takes full height */
+            overflow-y: auto; /* Allow scrolling if content overflows */
+        }
+
+        .sidebar.open + .game-content {
+            padding-left: 280px; /* Shift content when sidebar is open */
+        }
+
+        canvas {
+            display: block;
+            background-color: #000000; /* Match body background from image */
+            border-radius: 1rem; /* Rounded corners for the canvas */
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); /* Subtle shadow */
+            width: 80vw; /* Responsive width */
+            height: 70vh; /* Responsive height */
+            max-width: 1536px; /* Max width for FHD (1920 * 0.8) */
+            max-height: 864px; /* Max height for FHD (1080 * 0.8) - adjust for aspect ratio */
+            margin-bottom: 1rem; /* Space between canvas and controls */
+            cursor: grab; /* Indicate draggable element */
+            margin-top: 1rem; /* Add some space from the top */
+        }
+
+        canvas:active {
+            cursor: grabbing; /* Indicate dragging in progress */
+        }
+
+        /* Controls and output area (now inside sidebar) */
         .controls-output-container {
             background-color: #1a1a2e;
-            padding: clamp(1.2rem, 2vw, 2.5rem) clamp(1vw, 2vw, 2.5vw);
-            border-radius: 1.2rem;
-            box-shadow: 0 0.3rem 1.5rem rgba(0,0,0,0.3);
+            padding: 1.5rem;
+            border-radius: 1rem;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
             display: flex;
             flex-direction: column;
             align-items: center;
-            width: 85vw;
-            max-width: 1600px;
-            min-width: 320px;
-            margin: 2vh auto 0 auto;
-            z-index: 10;
-            gap: clamp(0.7rem, 1.5vw, 2rem);
+            width: 100%; /* Take full width of sidebar-content */
+            max-width: 250px; /* Max width for controls within sidebar */
+            margin-top: 1rem; /* Space above controls */
+            margin-bottom: 1rem; /* Ensure space at the bottom when scrolling */
         }
-        /* --- Internal UI Layout --- */
-        .slider-group {
-            width: 100%;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            margin-bottom: clamp(0.5rem, 1vw, 1.5rem);
-            color: #e0e0e0;
-            font-size: 1em;
-            gap: clamp(0.3rem, 0.7vw, 1rem);
-        }
-        .slider-group label {
-            margin-bottom: 0.2em;
-            font-weight: 500;
-            font-size: 1.05em;
-            letter-spacing: 0.01em;
-        }
-        .slider-group input[type="range"],
-        .slider-group input[type="number"],
-        .slider-group select {
-            width: clamp(120px, 60%, 400px);
-            padding: clamp(0.4em, 0.7vw, 0.7em);
-            margin-top: 0.3em;
-            border-radius: 0.7em;
-            border: 1.5px solid #4a4a6a;
-            background: #23234a;
-            color: #e0e0e0;
-            font-size: 1em;
-            box-shadow: 0 0.1em 0.5em rgba(0,0,0,0.12);
-            transition: border-color 0.2s, box-shadow 0.2s;
-        }
-        .slider-group input[type="number"]:focus,
-        .slider-group select:focus {
-            border-color: #8c07d3;
-            outline: none;
-            box-shadow: 0 0 0 2px #8c07d3aa;
-        }
-        .slider-group input[type="range"] {
-            width: clamp(120px, 80%, 600px);
-            height: 1.1em;
-            background: #4a4a6a;
-            border-radius: 0.5em;
-            outline: none;
-            opacity: 0.8;
-            transition: opacity .2s;
-        }
-        .slider-group input[type="range"]:hover {
-            opacity: 1;
-        }
-        .slider-group input[type="range"]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 2em;
-            height: 2em;
-            border-radius: 50%;
-            background: #8c07d3;
-            cursor: pointer;
-            box-shadow: 0 0 0.5em rgba(0,0,0,0.5);
-            border: 2px solid #fff;
-            transition: background 0.2s, border 0.2s;
-        }
-        .slider-group input[type="range"]:active::-webkit-slider-thumb {
-            background: #6a05ad;
-            border: 2px solid #00bfff;
-        }
-        .slider-group input[type="range"]::-moz-range-thumb {
-            width: 2em;
-            height: 2em;
-            border-radius: 50%;
-            background: #8c07d3;
-            cursor: pointer;
-            box-shadow: 0 0 0.5em rgba(0,0,0,0.5);
-            border: 2px solid #fff;
-            transition: background 0.2s, border 0.2s;
-        }
-        .slider-group input[type="range"]:active::-moz-range-thumb {
-            background: #6a05ad;
-            border: 2px solid #00bfff;
-        }
-        /* --- Buttons --- */
+
         .action-button {
-            background-color: #6a05ad;
-            color: #fff;
-            padding: clamp(0.6rem, 1.2vw, 1.1rem) clamp(1.1rem, 2vw, 2rem);
+            background-color: #6a05ad; /* Purple button */
+            color: white;
+            padding: 0.75rem 1.5rem; /* Consistent padding for touch targets */
             border: none;
-            border-radius: 0.7rem;
+            border-radius: 0.5rem;
             cursor: pointer;
-            font-size: 1.1em;
-            font-weight: 600;
-            transition: background 0.3s, transform 0.1s, box-shadow 0.2s;
-            margin-bottom: 0.5rem;
-            margin-top: 0.2rem;
-            min-width: 8em;
-            box-shadow: 0 0.1em 0.5em rgba(0,0,0,0.18);
+            font-size: clamp(1rem, 1.5vw, 1.2rem); /* Responsive font size */
+            transition: background-color 0.3s ease, transform 0.1s ease, opacity 0.3s ease;
+            margin-bottom: 0.75rem; /* Consistent space between buttons */
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3); /* Unified shadow */
         }
-        .action-button:hover, .action-button:focus {
+
+        .action-button:hover {
             background-color: #8c07d3;
-            transform: translateY(-2px) scale(1.04);
-            box-shadow: 0 0.2em 1em #8c07d355;
-            outline: none;
+            transform: translateY(-2px);
         }
+
         .action-button:active {
-            background-color: #4a4a6a;
-            transform: translateY(0) scale(0.98);
+            transform: translateY(0);
         }
+
+        .action-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            pointer-events: none; /* Disable clicks completely */
+        }
+
         #startButton {
-            font-size: 1.2em;
-            padding: clamp(0.8rem, 1.5vw, 1.5rem) clamp(1.5rem, 3vw, 2.5rem);
-            margin-bottom: 0.7rem;
-            background-color: #00bfff;
-            color: #fff;
+            font-size: clamp(1.1rem, 1.8vw, 1.4rem); /* Larger font for start button */
+            padding: 1rem 2rem;
+            margin-bottom: 1.5rem;
+            background-color: #00bfff; /* Brighter blue for start button */
         }
-        #startButton:hover, #startButton:focus {
+
+        #startButton:hover {
             background-color: #00aacc;
         }
-        #restartButton {
-            background-color: #23234a;
-            color: #fff;
-        }
-        #restartButton:hover, #restartButton:focus {
-            background-color: #2a2a4a;
-        }
-        /* --- Status Output --- */
+
         #statusOutput {
             background-color: #2a2a4a;
             color: #e0e0e0;
-            padding: clamp(0.7rem, 1vw, 1.2rem) clamp(1rem, 2vw, 1.5rem);
+            padding: 1rem;
             border-radius: 0.75rem;
             width: 100%;
-            min-height: 2.5em;
+            min-height: 50px; /* Ensure it's visible even when empty */
             text-align: center;
-            font-size: 1.05em;
+            font-size: clamp(0.9rem, 1.2vw, 1rem); /* Responsive font size */
             line-height: 1.4;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            word-break: break-word;
-            margin-top: 0.7rem;
-            box-shadow: 0 0.1em 0.5em rgba(0,0,0,0.10);
+            display: flex; /* Use flex for centering content */
+            align-items: center; /* Center vertically */
+            justify-content: center; /* Center horizontally */
+            word-break: break-word; /* Ensure long words breaks */
+            margin-top: 1rem;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2); /* Subtle inner shadow */
         }
-        /* --- Message Box & Countdown --- */
+
+        /* Message box styling */
         .message-box {
             position: fixed;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background-color: rgba(0,0,0,0.96);
-            color: #fff;
-            padding: clamp(1.2rem, 3vw, 2.5rem) clamp(1.2rem, 3vw, 2.5rem);
-            border-radius: 1.2rem;
-            box-shadow: 0 0.5em 2em rgba(0,0,0,0.7);
-            z-index: 2000 !important;
-            display: none;
+            background-color: rgba(0, 0, 0, 0.9); /* Darker overlay */
+            color: white;
+            padding: 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            display: none; /* Hidden by default */
             text-align: center;
-            font-size: 1.1em;
-            max-width: 90vw;
-            max-height: 90vh;
-            overflow-y: auto;
-            border: 2px solid #6a05ad;
+            font-size: clamp(1rem, 1.5vw, 1.1rem); /* Responsive font size */
+            max-width: 90vw; /* Responsive width */
+            max-height: 90vh; /* Responsive height */
+            overflow-y: auto; /* Scroll if content is too long */
+            border: 2px solid #6a05ad; /* Purple border */
         }
+
         .message-box button {
-            background-color: #6a05ad;
-            color: #fff;
-            padding: clamp(0.6rem, 1vw, 1.1rem) clamp(1.1rem, 2vw, 2rem);
+            background-color: #6a05ad; /* Purple button */
+            color: white;
+            padding: 0.75rem 1.5rem;
             border: none;
-            border-radius: 0.7rem;
+            border-radius: 0.5rem;
             cursor: pointer;
-            font-size: 1.1em;
-            font-weight: 600;
             margin-top: 1.5rem;
-            transition: background 0.3s, box-shadow 0.2s;
-            box-shadow: 0 0.1em 0.5em rgba(0,0,0,0.18);
+            transition: background-color 0.3s ease;
+            font-size: inherit; /* Inherit font size from message box */
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3); /* Unified shadow */
         }
-        .message-box button:hover, .message-box button:focus {
+
+        .message-box button:hover {
             background-color: #8c07d3;
-            box-shadow: 0 0.2em 1em #8c07d355;
+        }
+
+        #messageBoxNewGameButton {
+            background-color: #00bfff; /* Brighter blue for New Game button */
+            margin-left: 1rem; /* Space between OK and New Game */
+        }
+        #messageBoxNewGameButton:hover {
+            background-color: #00aacc;
+        }
+
+        /* Input and Select Field Styling */
+        .slider-group, .input-group, .language-selector {
+            width: 100%; /* Take full width of parent (sidebar-content) */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 0.75rem; /* Consistent vertical spacing */
+            color: #e0e0e0;
+            font-size: 0.9rem; /* Slightly smaller font for labels */
+        }
+
+        .slider-group label, .input-group label, .language-selector label {
+            margin-bottom: 0.4rem; /* Reduced space between label and input */
+            text-align: center; /* Center label text */
+        }
+
+        .slider-group input[type="range"],
+        .input-group input[type="number"],
+        .language-selector select {
+            width: 80%; /* Shorter width for inputs */
+            -webkit-appearance: none;
+            appearance: none;
+            padding: 0.5rem 0.75rem; /* Reduced padding for a more compact look */
+            background: #4a4a6a;
+            border: 1px solid #4a4a6a;
+            border-radius: 0.4rem; /* Slightly smaller border-radius */
             outline: none;
+            opacity: 0.8;
+            transition: opacity .2s, border-color .3s ease;
+            color: #e0e0e0;
+            font-size: 0.9rem; /* Smaller font for input text */
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
         }
-        #countdownDisplay {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: clamp(2.5rem, 7vw, 5rem);
-            font-weight: bold;
-            color: #8c07d3;
-            text-shadow: 0 0 0.7em #8c07d3cc;
-            z-index: 1001 !important;
-            display: none;
+
+        .slider-group input[type="range"]:hover,
+        .input-group input[type="number"]:hover,
+        .language-selector select:hover {
+            opacity: 1;
         }
-        /* --- Z-Index & Layering --- */
-        .controls-output-container, #countdownDisplay, #messageBox, #statusOutput, .slider-group, #startButton, #restartButton, #personalLuckyInput, #personalLuckyInputLabel, #zoomSlider, #zoomSliderLabel, #languageSelect {
-            z-index: 10 !important;
+
+        .input-group input[type="number"]:focus,
+        .language-selector select:focus {
+            border-color: #8c07d3;
         }
-        #countdownDisplay {
-            z-index: 1001 !important;
+
+        .input-group input[type="number"].invalid {
+            border-color: #ef4444;
         }
-        #messageBox {
-            z-index: 2000 !important;
+
+        .slider-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px; /* Smaller thumb */
+            height: 18px; /* Smaller thumb */
+            border-radius: 50%;
+            background: #8c07d3;
+            cursor: pointer;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
         }
-        #statusOutput, .slider-group {
-            z-index: 11 !important;
-        }
-        #startButton, #restartButton, #personalLuckyInput, #personalLuckyInputLabel, #zoomSlider, #zoomSliderLabel, #languageSelect {
-            z-index: 12 !important;
-        }
-        /* --- Responsive Breakpoints --- */
-        @media (max-width: 1200px) {
-            #particleCanvas, .controls-output-container {
-                width: 96vw;
-                max-width: 98vw;
-            }
-        }
-        @media (max-width: 900px) {
-            #particleCanvas, .controls-output-container {
-                width: 99vw;
-                min-width: 0;
-                max-width: 100vw;
-            }
-            .slider-group input[type="range"],
-            .slider-group input[type="number"],
-            .slider-group select {
-                width: 90vw;
-                max-width: 98vw;
-            }
-            .action-button {
-                width: 90vw;
-                max-width: 98vw;
-            }
-        }
-        @media (max-width: 600px) {
-            #particleCanvas, .controls-output-container {
-                width: 100vw;
-                min-width: 0;
-                max-width: 100vw;
-                border-radius: 0;
-            }
-            .controls-output-container {
-                padding: clamp(0.5rem, 1vw, 1.2rem) 0.2rem;
-            }
-            .slider-group input[type="range"],
-            .slider-group input[type="number"],
-            .slider-group select {
-                width: 98vw;
-                max-width: 100vw;
-            }
-            .action-button {
-                width: 98vw;
-                max-width: 100vw;
-            }
-        }
-        /* --- Accessibility: High Contrast for Focused Elements --- */
-        .slider-group input:focus, .slider-group select:focus, .action-button:focus, .message-box button:focus {
-            outline: 2.5px solid #00bfff;
-            outline-offset: 2px;
+
+        .slider-group input[type="range"]::-moz-range-thumb {
+            width: 18px; /* Smaller thumb */
+            height: 18px; /* Smaller thumb */
+            border-radius: 50%;
+            background: #8c07d3;
+            cursor: pointer;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
         }
     </style>
 </head>
 <body>
-    <script>
-        window.particles = [];
-        console.log("Global script: window.particles initialized to:", window.particles);
-    </script>
-
-    <canvas id="starfieldCanvas"></canvas>
-    <canvas id="particleCanvas"></canvas>
-
-    <div class="controls-output-container">
-        <div class="slider-group" style="margin-bottom:1.5rem;">
-            <label for="languageSelect">Language / Nyelv</label>
-            <select id="languageSelect" style="width:60%;padding:0.5em;margin-top:0.5em;border-radius:0.5em;border:1px solid #4a4a6a;background:#23234a;color:#e0e0e0;">
-                <option value="en">English</option>
-                <option value="hu">Magyar</option>
-            </select>
+    <div id="mainGameScreen" class="main-game-screen">
+        <div id="sidebar" class="sidebar">
+            <button id="sidebarToggleButton" class="sidebar-toggle-button">☰</button>
+            <div class="sidebar-content">
+                <h1 style="font-size: 1.8rem; color: #00bfff; margin-bottom: 1.5rem; text-shadow: 0 0 8px rgba(0, 191, 255, 0.6);">Stellar Fortune</h1>
+                <div class="language-selector">
+                    <label for="languageSelect" id="labelLanguageSelect"></label>
+                    <select id="languageSelect" onchange="window.setLanguage(this.value)">
+                        <option value="en">English</option>
+                        <option value="hu">Magyar</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="maxNumberInput" id="labelMaxNumberInput"></label>
+                    <input type="number" id="maxNumberInput" min="6" max="10000" value="1000">
+                </div>
+                <div class="input-group">
+                    <label for="numLuckyNumbersInput" id="labelNumLuckyNumbers"></label>
+                    <input type="number" id="numLuckyNumbersInput" min="1" max="10" value="6">
+                </div>
+                <div class="slider-group">
+                    <label for="zoomSlider" id="labelZoomSlider"></label>
+                    <input type="range" id="zoomSlider" min="100" max="500" value="160" oninput="window.updateInitialCameraZoom(this.value)">
+                </div>
+                <button class="action-button" id="startButton"></button>
+                <button class="action-button" id="restartButton"></button>
+                <div id="statusOutput" class="llm-output"></div>
+            </div>
         </div>
-        <div class="slider-group">
-            <label id="zoomSliderLabel" for="zoomSlider">Camera Zoom</label>
-            <input type="range" id="zoomSlider" min="50" max="400" value="200" step="1" oninput="window.updateInitialCameraZoom(this.value)">
-        </div>
-        <div class="slider-group" style="margin-bottom:1.5rem;">
-            <label id="personalLuckyInputLabel" for="personalLuckyInput">Personal Lucky Number</label>
-            <input type="number" id="personalLuckyInput" min="1" step="1" placeholder="Enter your lucky number (optional)" style="width:60%;padding:0.5em;margin-top:0.5em;border-radius:0.5em;border:1px solid #4a4a6a;background:#23234a;color:#e0e0e0;">
-        </div>
-        <button class="action-button" id="startButton">Start Lucky Draw</button>
-        <button class="action-button" id="restartButton">Restart Simulation</button>
-        <div id="statusOutput" class="llm-output">
-            Press Start to begin the Lucky Draw.
+        <div class="game-content">
+            <canvas id="particleCanvas"></canvas>
         </div>
     </div>
-
-    <div id="countdownDisplay"></div>
 
     <div id="messageBox" class="message-box">
         <p id="messageText"></p>
-        <button onclick="window.hideMessageBox()">OK</button>
+        <button id="messageBoxOkButton"></button>
+        <button class="action-button" id="messageBoxNewGameButton" style="display: none;"></button>
     </div>
 
     <script type="module">
-        // --- Starfield/Nebula Background ---
-        const starfieldCanvas = document.getElementById('starfieldCanvas');
-        const starfieldCtx = starfieldCanvas.getContext('2d');
-        let stars = [];
-        let nebulaGradient = null;
-        function resizeStarfield() {
-            starfieldCanvas.width = window.innerWidth;
-            starfieldCanvas.height = window.innerHeight;
-            nebulaGradient = starfieldCtx.createRadialGradient(
-                starfieldCanvas.width/2, starfieldCanvas.height/2, starfieldCanvas.width/8,
-                starfieldCanvas.width/2, starfieldCanvas.height/2, starfieldCanvas.width/1.2
-            );
-            nebulaGradient.addColorStop(0, 'rgba(80,40,120,0.18)');
-            nebulaGradient.addColorStop(0.5, 'rgba(40,20,60,0.10)');
-            nebulaGradient.addColorStop(1, 'rgba(0,0,0,0.0)');
-        }
-        function initStarfield(numStars=120) {
-            stars = [];
-            for (let i=0; i<numStars; i++) {
-                stars.push({
-                    x: Math.random()*starfieldCanvas.width,
-                    y: Math.random()*starfieldCanvas.height,
-                    r: Math.random()*1.2+0.3,
-                    vx: (Math.random()-0.5)*0.04,
-                    vy: (Math.random()-0.5)*0.04,
-                    alpha: Math.random()*0.5+0.5
-                });
-            }
-        }
-        function drawStarfield() {
-            starfieldCtx.clearRect(0,0,starfieldCanvas.width,starfieldCanvas.height);
-            // Nebula
-            if (nebulaGradient) {
-                starfieldCtx.fillStyle = nebulaGradient;
-                starfieldCtx.fillRect(0,0,starfieldCanvas.width,starfieldCanvas.height);
-            }
-            // Stars
-            for (let s of stars) {
-                starfieldCtx.beginPath();
-                starfieldCtx.arc(s.x, s.y, s.r, 0, 2*Math.PI);
-                starfieldCtx.fillStyle = `rgba(200,200,255,${s.alpha})`;
-                starfieldCtx.shadowColor = '#8c07d3';
-                starfieldCtx.shadowBlur = 8;
-                starfieldCtx.fill();
-                starfieldCtx.shadowBlur = 0;
-            }
-        }
-        function updateStarfield() {
-            for (let s of stars) {
-                s.x += s.vx;
-                s.y += s.vy;
-                if (s.x < 0) s.x += starfieldCanvas.width;
-                if (s.x > starfieldCanvas.width) s.x -= starfieldCanvas.width;
-                if (s.y < 0) s.y += starfieldCanvas.height;
-                if (s.y > starfieldCanvas.height) s.y -= starfieldCanvas.height;
-            }
-        }
-        function animateStarfield() {
-            updateStarfield();
-            drawStarfield();
-            requestAnimationFrame(animateStarfield);
-        }
-        window.addEventListener('resize', ()=>{
-            resizeStarfield();
-            initStarfield();
-        });
-        resizeStarfield();
-        initStarfield();
-        animateStarfield();
+        // Global declaration of window.particles to ensure it's available before module scripts
+        window.particles = [];
+        console.log("Global script: window.particles initialized to:", window.particles);
 
-        // Debugging: Initial state of window.particles (from module perspective, after imports)
-        console.log("Script module (after imports) loaded. Initial window.particles:", window.particles);
+        // --- DOM Element References ---
+        const mainGameScreen = document.getElementById('mainGameScreen');
+        const sidebar = document.getElementById('sidebar');
+        const sidebarToggleButton = document.getElementById('sidebarToggleButton');
+        const startButton = document.getElementById('startButton');
+        const restartButton = document.getElementById('restartButton');
+        const messageBoxOkButton = document.getElementById('messageBoxOkButton');
+        const messageBoxNewGameButton = document.getElementById('messageBoxNewGameButton');
+        const maxNumberInput = document.getElementById('maxNumberInput');
+        const numLuckyNumbersInput = document.getElementById('numLuckyNumbersInput'); // New input
+        const statusOutput = document.getElementById('statusOutput');
+        const languageSelect = document.getElementById('languageSelect');
+        const zoomSlider = document.getElementById('zoomSlider');
 
-        // --- Language Support ---
+        // --- Translations ---
         const translations = {
             en: {
-                cameraZoom: "Camera Zoom",
-                personalLucky: "Personal Lucky Number",
-                personalLuckyPlaceholder: "Enter your lucky number (optional)",
-                start: "Start Lucky Draw",
-                restart: "Restart Simulation",
-                statusDefault: "Press Start to begin the Lucky Draw.",
-                statusSwirl: "Spheres are swirling for luck...",
+                gameTitle: "Stellar Fortune", // New game title
+                labelLanguageSelect: "Language:",
+                labelZoomSlider: "Initial Zoom:",
+                labelMaxNumberInput: "Highest Lucky Number (1 to 10000):",
+                labelNumLuckyNumbers: "Number of Lucky Numbers (1-10):", // New translation
+                startButton: "▶️ Start ▶️", // Changed to "Start"
+                startButtonDrawing: "Drawing...",
+                restartButton: "🔄 Restart Simulation 🔄",
+                statusInitial: "Click Start to begin the Lucky Draw!", // Updated initial status
+                statusSwirling: "Spheres are floating in space...", // Updated status
+                statusClashing: "Particles clashing together...", // New status
                 statusSelected: "Lucky Numbers Selected!",
-                ok: "OK",
-                countdownGo: "GO!",
-                luckyNumbers: "Your Lucky Numbers:",
-                numerologySum: "Numerology Sum:",
-                affirmation: "Affirmation:",
-                luckyColor: "Lucky Color:",
-                symbol: "Symbol:",
-                personalLuckyTitle: "Your Personal Lucky Number:",
-                errorNoParticles: "No particles to select from!",
-                language: "Language",
-                messageBoxTitle: "Numerology Fortune"
+                messageNoParticles: "No particles to select from!",
+                messageInvalidNumberInput: "Please enter a number greater than or equal to {minParticles}.",
+                messageInvalidLuckyNumberInput: "Please enter a number between {min} and {max} for lucky numbers.", // New translation
+                messageLuckyNumbers: "Your Lucky Numbers:",
+                messageBoxOkButton: "OK",
+                messageBoxNewGameButton: "🌟 New Game 🌟",
             },
             hu: {
-                cameraZoom: "Kamera nagyítás",
-                personalLucky: "Személyes szerencseszám",
-                personalLuckyPlaceholder: "Saját szerencseszám (nem kötelező)",
-                start: "Sorsolás indítása",
-                restart: "Szimuláció újraindítása",
-                statusDefault: "Nyomd meg a Start gombot a sorsoláshoz.",
-                statusSwirl: "A gömbök szerencsét kavarnak...",
-                statusSelected: "Sorsolt számok kiválasztva!",
-                ok: "OK",
-                countdownGo: "RAJT!",
-                luckyNumbers: "Sorsolt számok:",
-                numerologySum: "Numerológiai összeg:",
-                affirmation: "Megerősítés:",
-                luckyColor: "Szerencseszín:",
-                symbol: "Szimbólum:",
-                personalLuckyTitle: "Személyes szerencseszámod:",
-                errorNoParticles: "Nincs elérhető gömb a sorsoláshoz!",
-                language: "Nyelv",
-                messageBoxTitle: "Numerológiai jóslat"
+                gameTitle: "Csillagjóslás", // New game title in Hungarian
+                labelLanguageSelect: "Nyelv:",
+                labelZoomSlider: "Kezdeti nagyítás:",
+                labelMaxNumberInput: "Legnagyobb szerencseszám (1-10000):",
+                labelNumLuckyNumbers: "Szerencseszámok száma (1-10):", // New translation
+                startButton: "▶️ Start ▶️", // Changed to "Start"
+                startButtonDrawing: "Sorsolás...",
+                restartButton: "🔄 Szimuláció újraindítása 🔄",
+                statusInitial: "Kattintson a Start gombra a szerencsesorsolás megkezdéséhez!", // Updated initial status
+                statusSwirling: "A gömbök a térben lebegnek...", // Updated status
+                statusClashing: "Részecskék ütköznek...", // New status
+                statusSelected: "Szerencseszámok kiválasztva!",
+                messageNoParticles: "Nincsenek kiválasztható részecskék!",
+                messageInvalidNumberInput: "Kérjük, adjon meg legalább {minParticles} számot.",
+                messageInvalidLuckyNumberInput: "Kérjük, adjon meg egy számot {min} és {max} között a szerencseszámokhoz.", // New translation
+                messageLuckyNumbers: "Az Ön szerencseszámai:",
+                messageBoxOkButton: "OK",
+                messageBoxNewGameButton: "🌟 Új Játék 🌟",
             }
         };
-        let currentLang = 'en';
-        function setLanguage(lang) {
-            currentLang = lang;
-            document.getElementById('zoomSliderLabel').textContent = translations[lang].cameraZoom;
-            document.getElementById('personalLuckyInputLabel').textContent = translations[lang].personalLucky;
-            document.getElementById('personalLuckyInput').placeholder = translations[lang].personalLuckyPlaceholder;
-            document.getElementById('startButton').textContent = translations[lang].start;
-            document.getElementById('restartButton').textContent = translations[lang].restart;
-            document.getElementById('statusOutput').textContent = translations[lang].statusDefault;
-            document.getElementById('languageSelect').previousElementSibling.textContent = translations[lang].language;
-            document.getElementById('messageText').parentElement.querySelector('button').textContent = translations[lang].ok;
-        }
-        document.getElementById('languageSelect').addEventListener('change', function() {
-            setLanguage(this.value);
-        });
+
+        let currentLanguage = 'en'; // Default language
+
+        // Function to update all UI text based on the selected language
+        window.setLanguage = function(lang) {
+            currentLanguage = lang;
+            const t = translations[currentLanguage];
+
+            // Update page title
+            document.title = t.gameTitle;
+            // Update sidebar title (assuming there's an h1 in sidebar-content)
+            document.querySelector('.sidebar-content h1').textContent = t.gameTitle;
+
+            document.getElementById('labelLanguageSelect').textContent = t.labelLanguageSelect;
+            document.getElementById('labelZoomSlider').textContent = t.labelZoomSlider;
+            document.getElementById('labelMaxNumberInput').textContent = t.labelMaxNumberInput;
+            document.getElementById('labelNumLuckyNumbers').textContent = t.labelNumLuckyNumbers; // Update new label
+            document.getElementById('startButton').textContent = window.simulationStarted ? t.startButtonDrawing : t.startButton;
+            document.getElementById('restartButton').textContent = t.restartButton;
+            
+            // Update status based on current state
+            if (isLiningUp) {
+                document.getElementById('statusOutput').textContent = t.statusSelected;
+            } else if (isClashing) {
+                document.getElementById('statusOutput').textContent = t.statusClashing;
+            } else if (isSwirling) {
+                document.getElementById('statusOutput').textContent = t.statusSwirling;
+            } else {
+                document.getElementById('statusOutput').textContent = t.statusInitial;
+            }
+
+            document.getElementById('messageBoxOkButton').textContent = t.messageBoxOkButton;
+            document.getElementById('messageBoxNewGameButton').textContent = t.messageBoxNewGameButton;
+        };
+
+        // Function to display messages in a custom message box (moved here for global access)
+        window.showMessageBox = function(message) {
+            const messageBox = document.getElementById('messageBox');
+            const messageText = document.getElementById('messageText');
+            messageText.innerHTML = message;
+            messageBox.style.display = 'block';
+            // Show New Game button only when fortune is displayed
+            if (window.luckyParticleSelected) { // Only show after a draw
+                messageBoxNewGameButton.style.display = 'inline-block';
+            } else {
+                messageBoxNewGameButton.style.display = 'none';
+            }
+        };
+
+        // Function to hide the custom message box
+        window.hideMessageBox = function() {
+            document.getElementById('messageBox').style.display = 'none';
+            messageBoxNewGameButton.style.display = 'none'; // Always hide new game button when closing
+        };
 
         // --- Three.js Setup ---
-        // `window.particles` is now declared globally in a separate script tag above.
         let scene, camera, renderer, cubeWireframe;
         let initialParticleColor = new THREE.Color();
 
-        // Global parameters - Adjusted for slower animation
-        let numberOfParticles = 1000;
-        let particleSpeedFactor = 0.002; // Reduced for slower motion
+        // Global parameters - Adjusted for faster random motion and clash
+        let particleSpeedFactor = 0.002;
         let boxSize = 200;
         let particleRadius = 1.0;
-        let damping = 0.9995; // Slightly increased for more damping (slower movement)
+        let damping = 0.9995;
 
-        // Galactic Motion Parameters - Adjusted for slower animation
-        let gravitationalPull = 0.00002; // Reduced
-        let orbitalVelocityFactor = 0.0002; // Reduced
-        let galacticRandomMotion = 0.0002; // Reduced
+        // Galactic Motion Parameters - Adjusted for a more "floating" effect
+        let gravitationalPull = 0.0;
+        let orbitalVelocityFactor = 0.0;
+        let galacticRandomMotion = 0.02; // Increased for faster random motion
 
-        // Intergalactic Movement Parameters (Peculiar Velocities) - Adjusted for slower animation
-        let peculiarVelocity = new THREE.Vector3(0.000005, 0.0000025, 0.000005); // Reduced
-        let peculiarVelocityChangeRate = 0.00000005; // Reduced
+        // Intergalactic Movement Parameters (Peculiar Velocities)
+        let peculiarVelocity = new THREE.Vector3(0.000005, 0.0000025, 0.000005);
+        let peculiarVelocityChangeRate = 0.00000005;
 
-        // Cosmic Expansion Parameters - Adjusted for slower animation
-        let cosmicExpansionFactor = 0.00000005; // Reduced
+        // Cosmic Expansion Parameters
+        let cosmicExpansionFactor = 0.00000005;
 
-        // Dynamic swirl parameters (will adjust these to reflect new names)
+        // Dynamic swirl parameters (not used for floating, but kept for structure)
         let currentOrbitalVelocityFactor = orbitalVelocityFactor;
         let currentGravitationalPull = gravitationalPull;
-        const maxOrbitalVelocityFactor = 0.0015; // Adjusted max for overall slower feel
-        const maxGravitationalPull = 0.00004; // Adjusted max
-        const swirlIncreaseRate = 0.000002; // Reduced for slower intensification
+        const maxOrbitalVelocityFactor = 0.0015;
+        const maxGravitationalPull = 0.00004;
+        const swirlIncreaseRate = 0.000002;
 
-        // Mouse rotation variables (now global for consistent access)
+        // Mouse rotation variables
         window.rotationSpeed = 0.005;
-        window.autoRotationSpeed = 0.0005; // Reduced for slower automatic cube rotation
 
-        // Mouse interaction for dragging
+        // Mouse/Touch interaction for dragging
         let isDragging = false;
-        let previousMouseX = 0;
-        let previousMouseY = 0;
+        let previousClientX = 0;
+        let previousClientY = 0;
+
+        // Camera orbit variables
+        let cameraRadius;
+        let cameraPhi;
+        let cameraTheta;
 
         // Lucky particle selection variables
-        const numberOfSelectedParticles = 6;
+        let numberOfSelectedParticles = 6; // Now dynamic, default to 6
         let selectedParticlesArray = [];
-        let countdownValue = 10; // Increased countdown value for longer selection process
     
         let countdownInterval;
-        let countdownDisplay;
         window.luckyParticleSelected = false; // Expose to window
         let initialZoomValue;
-        window.simulationStarted = false; // Expose to window // Controls if animation is active
-        let explosionActive = false; // Flag for explosive reveal
-        let explosionStartTime = 0; // To track when the explosion started
-        const explosionDuration = 1500; // 1.5 seconds for the explosion fade animation
+        window.simulationStarted = false; // Controls if animation is active (for swirl/clash)
+        let explosionActive = false; // No longer used for fading, but kept for reference if needed
 
-        // New variables for lining up and camera zoom
-        let isLiningUp = false;
+        // New state flags for particle behavior phases
+        let isFloating = true; // Particles are just floating around
+        let isSwirling = false; // Particles are swirling (briefly before clash)
+        let isClashing = false; // Particles are pulled to center for clash
+        let isLiningUp = false; // Selected particles are lining up
+
+        let clashStartTime = 0;
+        const clashDuration = 3000; // 3 seconds for the clash effect
+
         let lineUpStartTime = 0;
         const lineUpDuration = 2000; // 2 seconds for particles to line up and camera to zoom
         let initialCameraZForLineUp;
         const targetCameraZ = 60; // Closer zoom for lined-up particles
-        // Target positions for the 6 selected particles to line up horizontally in the center
-        const targetParticlePositions = [
-            new THREE.Vector3(-50, 0, 0),
-            new THREE.Vector3(-30, 0, 0),
-            new THREE.Vector3(-10, 0, 0),
-            new THREE.Vector3(10, 0, 0),
-            new THREE.Vector3(30, 0, 0),
-            new THREE.Vector3(50, 0, 0)
-        ];
+
+        // Camera Zoom limits
+        const minCameraZ = 50;
+        const maxCameraZ = 500;
+        const zoomSensitivity = 0.1;
+
+        // Target positions for the selected particles to line up horizontally in the center
+        // This will be dynamically generated based on numberOfSelectedParticles
+        let dynamicTargetParticlePositions = [];
 
         // Global particle color definition
         const particleColorHue = 270; // Default to purple-ish
         const particleColorSaturation = 70; // Default saturation
         const particleColorLightness = 60; // Default lightness
 
+        // New variable for highest particle number, linked to input
+        let maxParticleNumber = parseInt(maxNumberInput.value);
+
+        // Function to generate target positions dynamically based on count
+        function generateTargetParticlePositions(count) {
+            const positions = [];
+            const spacing = 20; // Distance between particles
+            const totalWidth = (count - 1) * spacing;
+            const startX = -totalWidth / 2; // Center the line of particles
+
+            for (let i = 0; i < count; i++) {
+                positions.push(new THREE.Vector3(startX + i * spacing, 0, 0));
+            }
+            return positions;
+        }
 
         // Initialize Three.js scene, camera, renderer
         function initThreeJS() {
             // Crucial check: Ensure THREE is defined before proceeding
             if (typeof THREE === 'undefined') {
                 console.error("THREE.js library is not loaded. Cannot initialize Three.js scene.");
-                window.showMessageBox("Error: 3D graphics library not loaded. Please try refreshing.");
+                window.showMessageBox(translations[currentLanguage].messageErrorThreeJS);
                 return;
             }
 
             scene = new THREE.Scene();
 
+            // Remove background image by setting scene.background to null
+            scene.background = null; 
+
             // Camera setup
-            initialZoomValue = parseFloat(document.getElementById('zoomSlider').value);
+            cameraRadius = parseFloat(zoomSlider.value); // Use initial zoom value as camera radius
+            cameraPhi = Math.PI / 4; // Start looking slightly from the side
+            cameraTheta = Math.PI / 2; // Start at the equator (looking horizontally)
+
+            // Set initial camera position based on spherical coordinates
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.z = initialZoomValue;
-            camera.position.y = boxSize * 0.2;
-            camera.lookAt(0, 0, 0);
+            camera.position.x = cameraRadius * Math.sin(cameraTheta) * Math.sin(cameraPhi);
+            camera.position.y = cameraRadius * Math.cos(cameraTheta);
+            camera.position.z = cameraRadius * Math.sin(cameraTheta) * Math.cos(cameraPhi);
+            camera.lookAt(0, 0, 0); // Always look at the center of the cube
 
             // Renderer setup
-            renderer = new THREE.WebGLRenderer({ antialias: true, canvas: document.getElementById('particleCanvas') });
-            renderer.setSize(window.innerWidth * 0.9, window.innerHeight * 0.7);
+            const canvasElement = document.getElementById('particleCanvas');
+            renderer = new THREE.WebGLRenderer({ antialias: true, canvas: canvasElement });
+            // Set initial size based on calculated values
+            const initialWidth = Math.min(window.innerWidth * 0.8, 1536);
+            const initialHeight = Math.min(window.innerHeight * 0.7, 864);
+            canvasElement.style.width = `${initialWidth}px`;
+            canvasElement.style.height = `${initialHeight}px`;
+            renderer.setSize(initialWidth, initialHeight);
+
+
             renderer.setClearColor(0x000000, 1); // Deep black background
 
             // Create cube wireframe border
@@ -608,56 +609,103 @@
             cubeWireframe = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x404080 }));
             scene.add(cubeWireframe);
 
-            // Get reference to the countdown display
-            countdownDisplay = document.getElementById('countdownDisplay');
-
             initParticles(); // Set up initial particle state
 
             window.addEventListener('resize', onWindowResize, false);
 
-            // Mouse interaction event listeners
-            const canvasElement = document.getElementById('particleCanvas');
-            canvasElement.addEventListener('mousedown', onMouseDown, false);
-            canvasElement.addEventListener('mousemove', onMouseMove, false);
-            canvasElement.addEventListener('mouseup', onMouseUp, false);
-            canvasElement.addEventListener('mouseleave', onMouseUp, false); // Treat mouse leaving as mouse up
+            // Mouse and Touch interaction event listeners
+            canvasElement.addEventListener('mousedown', onPointerDown, false);
+            canvasElement.addEventListener('mousemove', onPointerMove, false);
+            canvasElement.addEventListener('mouseup', onPointerUp, false);
+            canvasElement.addEventListener('mouseleave', onPointerUp, false); // Treat mouse leaving as mouse up
+
+            canvasElement.addEventListener('touchstart', onPointerDown, { passive: false });
+            canvasElement.addEventListener('touchmove', onPointerMove, { passive: false });
+            canvasElement.addEventListener('touchend', onPointerUp, false);
+            canvasElement.addEventListener('touchcancel', onPointerUp, false); // Handle touch cancellation
+
+            // Mousewheel zoom listener
+            canvasElement.addEventListener('wheel', onMouseWheel, { passive: false });
 
             animate();
         }
 
-        // Mouse event handlers
-        function onMouseDown(event) {
+        // Unified Pointer (Mouse/Touch) event handlers
+        function onPointerDown(event) {
             isDragging = true;
-            previousMouseX = event.clientX;
-            previousMouseY = event.clientY;
-            event.preventDefault(); // Prevent default browser drag behavior
+            if (event.touches) { // Touch event
+                previousClientX = event.touches[0].clientX;
+                previousClientY = event.touches[0].clientY;
+            } else { // Mouse event
+                previousClientX = event.clientX;
+                previousClientY = event.clientY;
+            }
+            event.preventDefault(); // Prevent default browser drag/scroll behavior
         }
 
-        function onMouseMove(event) {
+        function onPointerMove(event) {
             if (!isDragging) return;
 
-            const deltaX = event.clientX - previousMouseX;
-            const deltaY = event.clientY - previousMouseY;
+            let currentClientX, currentClientY;
+            if (event.touches) { // Touch event
+                currentClientX = event.touches[0].clientX;
+                currentClientY = event.touches[0].clientY;
+            } else { // Mouse event
+                currentClientX = event.clientX;
+                currentClientY = event.clientY;
+            }
 
-            // Rotate the scene based on mouse movement
-            // Adjust sensitivity as needed
-            scene.rotation.y += deltaX * 0.005; // Rotate around Y-axis for horizontal drag
-            scene.rotation.x += deltaY * 0.005; // Rotate around X-axis for vertical drag
+            const deltaX = currentClientX - previousClientX;
+            const deltaY = currentClientY - previousClientY;
 
-            previousMouseX = event.clientX;
-            previousMouseY = event.clientY;
+            // Update spherical coordinates for camera orbit
+            cameraPhi += deltaX * 0.005; // Azimuthal angle
+            cameraTheta += deltaY * 0.005; // Polar angle
+
+            // Clamp polar angle to prevent camera flipping over poles
+            cameraTheta = Math.max(0.01, Math.min(Math.PI - 0.01, cameraTheta));
+
+            // Recalculate camera position based on updated spherical coordinates and fixed radius
+            camera.position.x = cameraRadius * Math.sin(cameraTheta) * Math.sin(cameraPhi);
+            camera.position.y = cameraRadius * Math.cos(cameraTheta);
+            camera.position.z = cameraRadius * Math.sin(cameraTheta) * Math.cos(cameraPhi);
+
+            camera.lookAt(0, 0, 0); // Always look at the center of the cube
+
+            previousClientX = currentClientX;
+            previousClientY = currentClientY;
+            event.preventDefault();
         }
 
-        function onMouseUp(event) {
+        function onPointerUp(event) {
             isDragging = false;
+        }
+
+        // Mousewheel zoom handler
+        function onMouseWheel(event) {
+            event.preventDefault(); // Prevent page scrolling
+
+            // Adjust camera position based on wheel deltaY
+            // Scrolling up (deltaY negative) zooms in (decrease Z)
+            // Scrolling down (deltaY positive) zooms out (increase Z)
+            cameraRadius += event.deltaY * zoomSensitivity;
+
+            // Clamp camera radius within defined limits
+            cameraRadius = Math.max(minCameraZ, Math.min(maxCameraZ, cameraRadius));
+            
+            // Update camera position based on new radius
+            camera.position.x = cameraRadius * Math.sin(cameraTheta) * Math.sin(cameraPhi);
+            camera.position.y = cameraRadius * Math.cos(cameraTheta);
+            camera.position.z = cameraRadius * Math.sin(cameraTheta) * Math.cos(cameraPhi);
+
+            camera.updateProjectionMatrix();
         }
 
         // Function to create a CanvasTexture for text
         function createTextTexture(text, color = 'white', fontSize = 128) {
             const canvas = document.createElement('canvas');
             const context = canvas.getContext('2d');
-            const font = `${fontSize}px Arial`;
-
+            const font = `${fontSize}px Inter, sans-serif`; // Use Inter font
             context.font = font;
             const textMetrics = context.measureText(text);
             canvas.width = textMetrics.width + 20; // Add padding
@@ -691,16 +739,23 @@
                     p.textMesh.material.dispose();
                 }
             });
-            window.particles = [];
-            selectedParticlesArray = [];
-            window.luckyParticleSelected = false;
-            explosionActive = false;
+            window.particles = []; // Clear the array
+            selectedParticlesArray = []; // Reset selected particles array
+            window.luckyParticleSelected = false; // Reset flag
+            
+            // Reset state flags
+            isFloating = true;
+            isSwirling = false;
+            isClashing = false;
             isLiningUp = false;
-            updateStatusOutput('statusDefault'); // Reset status text
+
+            statusOutput.textContent = translations[currentLanguage].statusInitial; // Reset status text
+
+            // Reset dynamic swirl parameters (not used for floating, but kept for structure)
             currentOrbitalVelocityFactor = orbitalVelocityFactor;
             currentGravitationalPull = gravitationalPull;
 
-            console.log("initParticles: numberOfParticles is", numberOfParticles); // Debugging log
+            console.log("initParticles: maxParticleNumber is", maxParticleNumber); // Debugging log
 
             const center = new THREE.Vector3(0, 0, 0);
             const sphereGeometry = new THREE.SphereGeometry(particleRadius, 16, 16);
@@ -708,55 +763,32 @@
             initialParticleColor.setHSL(particleColorHue / 360, particleColorSaturation / 100, particleColorLightness / 100);
 
             try { // Added try-catch for particle creation loop
-                for (let i = 0; i < numberOfParticles; i++) {
+                // Create particles up to maxParticleNumber
+                for (let i = 0; i < maxParticleNumber; i++) {
                     let x = (Math.random() - 0.5) * boxSize;
                     let y = (Math.random() - 0.5) * boxSize;
                     let z = (Math.random() - 0.5) * boxSize;
 
                     const particlePos = new THREE.Vector3(x, y, z);
-                    const directionFromCenter = new THREE.Vector3().subVectors(particlePos, center).normalize();
-
-                    // Initial gravitational pull
-                    const initialGravitationalForce = directionFromCenter.clone().multiplyScalar(-particlePos.length() * gravitationalPull);
-
-                    // Initial orbital velocity
-                    const axis = new THREE.Vector3(0, 1, 0); // Assume galactic plane is XZ
-                    const initialTangentialVelocity = new THREE.Vector3().crossVectors(axis, directionFromCenter).normalize();
-                    const initialDifferentialFactor = Math.max(0, 1 - (particlePos.length() / (boxSize / 2)));
-                    initialTangentialVelocity.multiplyScalar(particlePos.length() * orbitalVelocityFactor * initialDifferentialFactor);
-
-                    // Initial random galactic motion
-                    const initialRandomMotion = new THREE.Vector3(
-                        (Math.random() - 0.5) * galacticRandomMotion,
-                        (Math.random() - 0.5) * galacticRandomMotion,
-                        (Math.random() - 0.5) * galacticRandomMotion
-                    );
-
-                    // Initial peculiar velocity (global drift)
-                    const initialPeculiarVelocity = peculiarVelocity.clone();
-
-                    // Initial cosmic expansion (subtle outward push)
-                    const initialCosmicExpansionForce = directionFromCenter.clone().multiplyScalar(cosmicExpansionFactor);
-
-                    const initialVelocity = new THREE.Vector3()
-                        .add(initialGravitationalForce)
-                        .add(initialTangentialVelocity)
-                        .add(initialRandomMotion)
-                        .add(initialPeculiarVelocity)
-                        .add(initialCosmicExpansionForce);
-
                     const material = new THREE.MeshBasicMaterial({ color: initialParticleColor.clone() });
                     const mesh = new THREE.Mesh(sphereGeometry, material);
                     mesh.position.set(x, y, z);
                     scene.add(mesh);
 
+                    // Initialize particles with very low velocity for initial "floating"
+                    const initialVelocity = new THREE.Vector3(
+                        (Math.random() - 0.5) * particleSpeedFactor * 0.1,
+                        (Math.random() - 0.5) * particleSpeedFactor * 0.1,
+                        (Math.random() - 0.5) * particleSpeedFactor * 0.1
+                    );
+
                     window.particles.push({ // Use window.particles
                         mesh: mesh,
                         velocity: initialVelocity,
-                        number: i + 1
+                        number: i + 1 // Particles are numbered from 1 up to maxParticleNumber
                     });
                     // Log first and last particle to confirm pushing
-                    if (i === 0 || i === numberOfParticles - 1) {
+                    if (i === 0 || i === maxParticleNumber - 1) {
                         console.log(`initParticles: Pushed particle ${i + 1}. Current array size: ${window.particles.length}`);
                     }
                 }
@@ -766,53 +798,10 @@
             }
             console.log("initParticles: Particles created, total:", window.particles.length); // Debugging log
             // Reset camera to initial position on re-init
-            camera.position.z = initialZoomValue;
-            camera.position.y = boxSize * 0.2;
+            camera.position.x = cameraRadius * Math.sin(cameraTheta) * Math.sin(cameraPhi);
+            camera.position.y = cameraRadius * Math.cos(cameraTheta);
+            camera.position.z = cameraRadius * Math.sin(cameraTheta) * Math.cos(cameraPhi);
             camera.lookAt(0, 0, 0);
-            createParticleTrails();
-        }
-
-        // --- Particle Trails ---
-        let particleTrails = [];
-        function createParticleTrails() {
-            particleTrails = window.particles.map(p => ({
-                positions: [p.mesh.position.clone()],
-                color: p.mesh.material.color.clone(),
-                mesh: p.mesh
-            }));
-        }
-        function updateParticleTrails() {
-            for (let i=0; i<window.particles.length; i++) {
-                const p = window.particles[i];
-                const trail = particleTrails[i];
-                if (!trail) continue;
-                // Add new position
-                trail.positions.push(p.mesh.position.clone());
-                if (trail.positions.length > 16) trail.positions.shift();
-            }
-        }
-        function renderParticleTrails() {
-            // Remove old trail objects
-            for (let t of particleTrails) {
-                if (t.line) {
-                    scene.remove(t.line);
-                }
-            }
-            // Add new trail lines
-            for (let i=0; i<particleTrails.length; i++) {
-                const trail = particleTrails[i];
-                if (trail.positions.length < 2) continue;
-                const geometry = new THREE.BufferGeometry().setFromPoints(trail.positions);
-                const material = new THREE.LineBasicMaterial({
-                    color: trail.color,
-                    transparent: true,
-                    opacity: 0.25,
-                    linewidth: 2
-                });
-                const line = new THREE.Line(geometry, material);
-                scene.add(line);
-                trail.line = line;
-            }
         }
 
         // Animation loop
@@ -820,111 +809,86 @@
             requestAnimationFrame(animate);
 
             updateParticles();
-            updateParticleTrails();
-            renderParticleTrails();
 
-            // Automatic cube rotation only if not dragging and not lining up
-            if (!window.luckyParticleSelected && !isDragging && !isLiningUp) {
-                cubeWireframe.rotation.y += window.autoRotationSpeed;
-                scene.rotation.y += window.autoRotationSpeed;
-
-                // Intensify orbital motion and gravitational pull if simulation has started but selection hasn't happened
-                if (window.simulationStarted) {
-                    currentOrbitalVelocityFactor = Math.min(maxOrbitalVelocityFactor, currentOrbitalVelocityFactor + swirlIncreaseRate);
-                    currentGravitationalPull = Math.min(maxGravitationalPull, currentGravitationalPull + swirlIncreaseRate * 0.1);
-                }
-            }
+            // Automatic cube rotation is removed as per user request.
+            // Cube only rotates with user interaction (mouse/touch drag).
             renderer.render(scene, camera);
         }
 
         // Update particle positions and handle interactions/boundaries
         function updateParticles() {
-            const center = new THREE.Vector3(0, 0, 0); // Define center for inward pull
+            const center = new THREE.Vector3(0, 0, 0);
 
-            // Slowly change the direction of peculiar velocity
+            // Slowly change the direction of peculiar velocity (always active)
             peculiarVelocity.x += (Math.random() - 0.5) * peculiarVelocityChangeRate;
             peculiarVelocity.y += (Math.random() - 0.5) * peculiarVelocityChangeRate;
             peculiarVelocity.z += (Math.random() - 0.5) * peculiarVelocityChangeRate;
 
-            for (let i = 0; i < window.particles.length; i++) { // Use window.particles
-                const p = window.particles[i]; // Use window.particles
+            for (let i = 0; i < window.particles.length; i++) {
+                const p = window.particles[i];
                 const isSelected = selectedParticlesArray.includes(p);
-
-                // Handle explosion (fading non-selected particles)
-                if (explosionActive && !isSelected) {
-                    const elapsedTime = Date.now() - explosionStartTime;
-                    let opacity = 1 - (elapsedTime / explosionDuration);
-                    p.mesh.material.opacity = Math.max(0, opacity);
-                    if (p.mesh.material.opacity <= 0) {
-                        p.mesh.visible = false;
-                    }
-                }
 
                 // Apply damping
                 p.velocity.multiplyScalar(damping);
 
-                // Apply dynamic forces if not selected and not lining up
-                if (!window.luckyParticleSelected && window.simulationStarted && !isLiningUp) {
-                    const directionFromCenter = new THREE.Vector3().subVectors(p.mesh.position, center).normalize();
-                    const distanceToCenter = p.mesh.position.length(); // Use length for distance to center
-
-                    // Gravitational Pull (inward)
-                    const gravitationalForce = directionFromCenter.clone().multiplyScalar(-distanceToCenter * currentGravitationalPull);
-                    p.velocity.add(gravitationalForce);
-
-                    // Orbital Velocity (tangential, differential rotation)
-                    const axis = new THREE.Vector3(0, 1, 0); // Assume galactic plane is Y-axis for rotation
-                    const tangentialVelocity = new THREE.Vector3().crossVectors(axis, directionFromCenter).normalize();
-                    // Differential rotation: faster closer to center, slower further out
-                    const differentialFactor = Math.max(0, 1 - (distanceToCenter / (boxSize / 2))); // Stronger closer to center
-                    p.velocity.add(tangentialVelocity.multiplyScalar(distanceToCenter * currentOrbitalVelocityFactor * differentialFactor));
-
-                    // Random Galactic Motion
+                if (isFloating || isSwirling) { // Initial floating or swirling phase
                     p.velocity.x += (Math.random() - 0.5) * galacticRandomMotion;
                     p.velocity.y += (Math.random() - 0.5) * galacticRandomMotion;
                     p.velocity.z += (Math.random() - 0.5) * galacticRandomMotion;
-
-                    // Intergalactic Movement (Peculiar Velocities)
                     p.velocity.add(peculiarVelocity);
-
-                    // Cosmic Expansion (very subtle outward push)
-                    const cosmicExpansionForce = directionFromCenter.clone().multiplyScalar(cosmicExpansionFactor);
+                    const cosmicExpansionForce = new THREE.Vector3().subVectors(p.mesh.position, center).normalize().multiplyScalar(cosmicExpansionFactor);
                     p.velocity.add(cosmicExpansionForce);
 
-                    // Dynamic color shift during swirl
+                    // Dynamic color shift during floating/swirling
                     p.mesh.material.color.setHSL(
-                        (particleColorHue / 360 + Math.sin(Date.now() * 0.0001 + i * 0.01) * 0.05) % 1, // Subtle hue shift
+                        (particleColorHue / 360 + Math.sin(Date.now() * 0.0001 + i * 0.01) * 0.05) % 1,
                         particleColorSaturation / 100,
                         particleColorLightness / 100
                     );
-                } else if (window.luckyParticleSelected) {
-                    // Once selected, keep selected particles' colors vibrant
+
+                } else if (isClashing) { // Clashing phase
+                    // Strong inward pull for all particles during clash
+                    const clashInwardForce = 0.005; // Define clash force here
+                    const directionToCenter = new THREE.Vector3().subVectors(center, p.mesh.position).normalize();
+                    p.velocity.add(directionToCenter.multiplyScalar(clashInwardForce));
+
+                    // Dynamic color shift during clash
+                    p.mesh.material.color.setHSL(
+                        (particleColorHue / 360 + Math.sin(Date.now() * 0.0001 + i * 0.01) * 0.05) % 1,
+                        particleColorSaturation / 100,
+                        particleColorLightness / 100
+                    );
+
+                } else if (isLiningUp) { // Lining up phase
                     if (isSelected) {
+                        // Selected particles interpolate to target positions
+                        const elapsedTime = Date.now() - lineUpStartTime;
+                        let t = Math.min(1, elapsedTime / lineUpDuration);
+                        const selectedIndex = selectedParticlesArray.indexOf(p);
+                        if (selectedIndex !== -1 && dynamicTargetParticlePositions[selectedIndex]) { // Use dynamic positions
+                            p.mesh.position.lerp(dynamicTargetParticlePositions[selectedIndex], t);
+                            p.velocity.set(0, 0, 0); // Stop other forces for selected particles during line up
+                        }
                         p.mesh.material.color.setHSL(particleColorHue / 360, particleColorSaturation / 100, particleColorLightness / 100);
+                    } else {
+                        // Non-selected particles resume floating after clash ends
+                        p.velocity.x += (Math.random() - 0.5) * galacticRandomMotion;
+                        p.velocity.y += (Math.random() - 0.5) * galacticRandomMotion;
+                        p.velocity.z += (Math.random() - 0.5) * galacticRandomMotion;
+                        p.velocity.add(peculiarVelocity);
+                        const cosmicExpansionForce = new THREE.Vector3().subVectors(p.mesh.position, center).normalize().multiplyScalar(cosmicExpansionFactor);
+                        p.velocity.add(cosmicExpansionForce);
+                        // Keep their dynamic color shift
+                        p.mesh.material.color.setHSL(
+                            (particleColorHue / 360 + Math.sin(Date.now() * 0.0001 + i * 0.01) * 0.05) % 1,
+                            particleColorSaturation / 100,
+                            particleColorLightness / 100
+                        );
                     }
                 }
 
-                // Handle lining up animation for selected particles
-                if (isLiningUp && isSelected) {
-                    const elapsedTime = Date.now() - lineUpStartTime;
-                    let t = Math.min(1, elapsedTime / lineUpDuration); // Animation progress (0 to 1)
-
-                    const selectedIndex = selectedParticlesArray.indexOf(p);
-                    if (selectedIndex !== -1 && targetParticlePositions[selectedIndex]) {
-                        // Interpolate position
-                        p.mesh.position.lerp(targetParticlePositions[selectedIndex], t);
-                        // Stop particle's own velocity once lining up starts
-                        p.velocity.set(0, 0, 0);
-                    }
-                } else if (isLiningUp && !isSelected) {
-                    // If lining up, and not selected, ensure non-selected particles are fully hidden
-                    p.mesh.material.opacity = 0;
-                    p.mesh.visible = false;
-                }
-
-
-                // Ensure minimum speed for continuous floating (only if not lining up)
-                const minContinuousSpeed = 0.0005; // Define locally if not global
+                // Ensure minimum speed for continuous floating (only if not lining up for non-selected)
+                const minContinuousSpeed = 0.0005;
                 if (!isLiningUp && p.velocity.length() < minContinuousSpeed) {
                     p.velocity.x += (Math.random() - 0.5) * particleSpeedFactor * 0.5;
                     p.velocity.y += (Math.random() - 0.5) * particleSpeedFactor * 0.5;
@@ -933,11 +897,10 @@
 
                 p.mesh.position.add(p.velocity);
 
-                // Boundary collision (bounce off cube walls) and color change
+                // Boundary collision (bounce off cube walls) and clamp position
                 const halfBox = boxSize / 2;
                 let collided = false;
 
-                // Check and clamp position for X-axis
                 if (p.mesh.position.x + particleRadius > halfBox) {
                     p.velocity.x *= -1;
                     p.mesh.position.x = halfBox - particleRadius;
@@ -948,7 +911,6 @@
                     collided = true;
                 }
 
-                // Check and clamp position for Y-axis
                 if (p.mesh.position.y + particleRadius > halfBox) {
                     p.velocity.y *= -1;
                     p.mesh.position.y = halfBox - particleRadius;
@@ -959,7 +921,6 @@
                     collided = true;
                 }
 
-                // Check and clamp position for Z-axis
                 if (p.mesh.position.z + particleRadius > halfBox) {
                     p.velocity.z *= -1;
                     p.mesh.position.z = halfBox - particleRadius;
@@ -980,8 +941,7 @@
                     p.mesh.material.color.copy(newColor);
                 }
             }
-
-            // Camera zoom animation during lining up
+            // Camera zoom animation during lining up (only if isLiningUp is true)
             if (isLiningUp) {
                 const elapsedTime = Date.now() - lineUpStartTime;
                 let t = Math.min(1, elapsedTime / lineUpDuration);
@@ -992,74 +952,113 @@
 
         function onWindowResize() {
             const canvasElement = document.getElementById('particleCanvas');
-            canvasElement.width = window.innerWidth * 0.9;
-            canvasElement.height = window.innerHeight * 0.7;
+            // Recalculate size based on current window dimensions and max constraints
+            const newWidth = Math.min(window.innerWidth * 0.8, 1536);
+            const newHeight = Math.min(window.innerHeight * 0.7, 864);
 
-            camera.aspect = canvasElement.width / canvasElement.height;
+            canvasElement.style.width = `${newWidth}px`;
+            canvasElement.style.height = `${newHeight}px`;
+
+            camera.aspect = newWidth / newHeight;
             camera.updateProjectionMatrix();
-            renderer.setSize(canvasElement.width, canvasElement.height);
+            renderer.setSize(newWidth, newHeight);
+
+            // Adjust game-content padding if sidebar is open
+            if (sidebar.classList.contains('open')) {
+                document.querySelector('.game-content').style.paddingLeft = '280px';
+            } else {
+                document.querySelector('.game-content').style.paddingLeft = '0';
+            }
         }
 
         // Function to update initial camera zoom (from slider)
         window.updateInitialCameraZoom = function(value) { // Expose to window
-            initialZoomValue = parseFloat(value);
-            if (!window.luckyParticleSelected) {
-                camera.position.z = initialZoomValue;
-                camera.updateProjectionMatrix();
-            }
+            cameraRadius = parseFloat(value); // Update camera radius
+            // Recalculate camera position immediately based on new radius and current angles
+            camera.position.x = cameraRadius * Math.sin(cameraTheta) * Math.sin(cameraPhi);
+            camera.position.y = cameraRadius * Math.cos(cameraTheta);
+            camera.position.z = cameraRadius * Math.sin(cameraTheta) * Math.cos(cameraPhi);
+            camera.updateProjectionMatrix(); // Important to update projection matrix after position change
         }
 
+        // Function to update the maximum particle number from the input
+        maxNumberInput.addEventListener('change', function() {
+            const newMax = parseInt(this.value);
+            if (isNaN(newMax) || newMax < numberOfSelectedParticles) { // Ensure minimum of 6 particles
+                this.value = maxParticleNumber; // Revert to old value if invalid
+                this.classList.add('invalid'); // Add invalid class for visual feedback
+                setTimeout(() => this.classList.remove('invalid'), 1500); // Remove after 1.5s
+                window.showMessageBox(translations[currentLanguage].messageInvalidNumberInput.replace('{minParticles}', numberOfSelectedParticles));
+                return;
+            }
+            maxParticleNumber = newMax;
+            // Restart simulation to apply the new number range
+            window.restartSimulation();
+        });
+
+        // Event listener for the new "Number of Lucky Numbers" input
+        numLuckyNumbersInput.addEventListener('change', function() {
+            const newNum = parseInt(this.value);
+            if (isNaN(newNum) || newNum < 1 || newNum > 10) {
+                this.value = numberOfSelectedParticles; // Revert to old value
+                this.classList.add('invalid');
+                setTimeout(() => this.classList.remove('invalid'), 1500);
+                window.showMessageBox(translations[currentLanguage].messageInvalidLuckyNumberInput.replace('{min}', 1).replace('{max}', 10));
+                return;
+            }
+            numberOfSelectedParticles = newNum;
+            // No need to restart simulation here, as it will be applied on the next draw
+        });
+
+
+        function displayLuckyNumbersOnly(selectedNumbersString) {
+            const t = translations[currentLanguage];
+            const message = `
+                <p style="font-weight: bold; font-size: 1.5em; margin-bottom: 1em;">${t.messageLuckyNumbers} ${selectedNumbersString}</p>
+            `;
+            window.showMessageBox(message);
+        }
+
+
         // --- Game Flow Functions ---
+        // This function is now the primary entry point for starting/restarting the game
+        function newGame() {
+            window.hideMessageBox(); // Hide any open message box
+            window.restartSimulation(); // Reset the 3D simulation
+            sidebar.classList.add('open'); // Ensure sidebar is open for new game setup
+            document.querySelector('.game-content').style.paddingLeft = '280px'; // Adjust padding
+            // No immediate startLuckyDraw here, as the user will click the button
+        }
+
         // startLuckyDraw is now exposed globally via window.startLuckyDraw in the module script
         window.startLuckyDraw = function() {
-            // If simulation is already started, restart it instead of showing a message
-            if (window.simulationStarted) {
+            if (isSwirling || isClashing || isLiningUp) { // Already in a process
                 window.restartSimulation();
                 return;
             }
-            window.simulationStarted = true;
-            updateStatusOutput('statusSwirl');
-            window.startCountdown();
-        };
-
-        // Expose startCountdown to the global scope
-        window.startCountdown = function() {
-            clearInterval(countdownInterval);
-            countdownDisplay.style.display = 'block';
-            countdownValue = 10; // Set countdown to 10 seconds
-            countdownDisplay.textContent = countdownValue;
-
-            countdownInterval = setInterval(() => {
-                countdownValue--;
-                if (countdownValue > 0) {
-                    countdownDisplay.textContent = countdownValue;
-                } else {
-                    countdownDisplay.textContent = translations[currentLang].countdownGo;
-                    clearInterval(countdownInterval);
-                    setTimeout(() => {
-                        window.autoSelectLuckyParticles();
-                    }, 500);
-                }
-            }, 1000);
-        };
-
-        // New function to start the lining up animation and camera zoom
-        function startLiningUpAnimation(selectedNumbers, sumOfNumbers) {
-            isLiningUp = true;
-            lineUpStartTime = Date.now();
-            initialCameraZForLineUp = camera.position.z; // Store current camera Z before zooming
+            isFloating = false; // Stop floating
+            isSwirling = true; // Start swirling (briefly)
+            statusOutput.textContent = translations[currentLanguage].statusSwirling;
+            startButton.textContent = translations[currentLanguage].startButtonDrawing;
+            startButton.disabled = true;
 
             setTimeout(() => {
-                isLiningUp = false; // End lining up animation
-                displayNumerologyFortune(sumOfNumbers, selectedNumbers); // Display fortune after animation
-            }, lineUpDuration);
-        }
+                isSwirling = false; // End swirling
+                isClashing = true; // Start clashing
+                clashStartTime = Date.now(); // Record clash start time
+                statusOutput.textContent = translations[currentLanguage].statusClashing; // Update status
+
+                window.autoSelectLuckyParticles(); // Select particles and trigger clash behavior
+            }, 5000); // Swirling duration before clash (reduced to 5 seconds for quicker action)
+        };
 
         // Expose autoSelectLuckyParticles to the global scope
         window.autoSelectLuckyParticles = function() {
             console.log("autoSelectLuckyParticles: Current window.particles array length:", window.particles.length); // Debugging log
             if (window.particles.length === 0) { // Use window.particles
-                window.showMessageBox(translations[currentLang].errorNoParticles);
+                window.showMessageBox(translations[currentLanguage].messageNoParticles);
+                startButton.disabled = false; // Re-enable start button
+                startButton.textContent = translations[currentLanguage].startButton; // Reset button text
                 return;
             }
 
@@ -1067,6 +1066,9 @@
             // Create a fresh array of available indices for unbiased selection.
             // This ensures every particle has an equal chance of being picked.
             const availableIndices = Array.from({ length: window.particles.length }, (_, i) => i);
+
+            // Dynamically generate target positions for the selected particles
+            dynamicTargetParticlePositions = generateTargetParticlePositions(numberOfSelectedParticles);
 
             for (let i = 0; i < numberOfSelectedParticles; i++) {
                 if (availableIndices.length === 0) break;
@@ -1094,191 +1096,94 @@
                 p.mesh.add(p.textMesh);
             }
 
-            explosionActive = true; // Trigger fading of non-selected particles
-            explosionStartTime = Date.now(); // Record start time of explosion
-            window.particles.forEach(p => { // Use window.particles
-                if (!selectedParticlesArray.includes(p)) {
-                    p.mesh.material.transparent = true; // Enable transparency for fading
-                }
-            });
-
-            window.luckyParticleSelected = true;
-            updateStatusOutput('statusSelected');
+            window.luckyParticleSelected = true; // Flag indicating selection has occurred
 
             const selectedNumbers = selectedParticlesArray.map(p => p.number).join(', ');
-            const sumOfNumbers = selectedParticlesArray.reduce((sum, p) => sum + p.number, 0);
             
-            // Delay displaying the numerology fortune until after the explosion animation
+            // Set timeout to end clashing and start lining up
             setTimeout(() => {
-                explosionActive = false; // Stop explosion logic after duration
-                countdownDisplay.style.display = 'none'; // Hide the "GO!" text
-                startLiningUpAnimation(selectedNumbers, sumOfNumbers); // Start lining up and camera zoom
-            }, explosionDuration);
+                isClashing = false; // End clashing
+                isLiningUp = true; // Start lining up
+                lineUpStartTime = Date.now(); // Record line up start time
+                statusOutput.textContent = translations[currentLanguage].statusSelected; // Update status
+
+                // The displayLuckyNumbersOnly will be called after lineUpDuration
+                setTimeout(() => {
+                    isLiningUp = false; // End lining up
+                    displayLuckyNumbersOnly(selectedNumbers);
+                    startButton.disabled = false;
+                    startButton.textContent = translations[currentLanguage].startButton;
+                }, lineUpDuration);
+            }, clashDuration); // Clash duration
         };
 
         // Expose restartSimulation to the global scope
         window.restartSimulation = function() {
-            clearInterval(countdownInterval);
-            countdownDisplay.style.display = 'none';
-            countdownValue = 10; // Reset countdown for restart
-            window.simulationStarted = false;
-            explosionActive = false;
-            isLiningUp = false; // Reset lining up flag
+            clearInterval(countdownInterval); // Still good to clear any lingering interval, though not strictly needed here
+            
+            // Reset all state flags
+            isFloating = true;
+            isSwirling = false;
+            isClashing = false;
+            isLiningUp = false;
+            window.luckyParticleSelected = false;
+
+            startButton.disabled = false; // Re-enable start button
+            startButton.textContent = translations[currentLanguage].startButton; // Reset button text
 
             initParticles(); // Re-initialize particles and scene
 
-            camera.position.z = initialZoomValue;
-            camera.position.y = boxSize * 0.2;
+            // Reset camera position to initial state
+            camera.position.x = cameraRadius * Math.sin(cameraTheta) * Math.sin(cameraPhi);
+            camera.position.y = cameraRadius * Math.cos(cameraTheta);
+            camera.position.z = cameraRadius * Math.sin(cameraTheta) * Math.cos(cameraPhi);
             camera.lookAt(0, 0, 0);
-            updateStatusOutput('statusDefault');
         };
 
-        // --- Numerology Logic ---
-        function reduceToSingleDigit(number) {
-            if (number === 11 || number === 22 || number === 33) {
-                return number; // Master numbers
-            }
-            let sum = 0;
-            while (number > 0 || sum > 9) {
-                if (number === 0) {
-                    number = sum;
-                    sum = 0;
-                }
-                sum += number % 10;
-                number = Math.floor(number / 10);
-            }
-            return sum;
-        }
-
-        function getNumerologyMeaning(number) {
-            switch (number) {
-                case 1: return "The Leader: New beginnings, independence, and strong will. You are destined to forge your own path.";
-                case 2: return "The Harmonizer: Balance, cooperation, and diplomacy. Your path is one of partnership and understanding.";
-                case 3: return "The Creator: Creativity, communication, and joy. Express yourself and inspire others with your vibrant energy.";
-                case 4: return "The Builder: Stability, hard work, and strong foundations. Diligence will lead you to lasting success.";
-                case 5: return "The Adventurer: Freedom, change, and adaptability. Embrace new experiences and explore the world around you.";
-                case 6: return "The Nurturer: Responsibility, harmony, and compassion. Your focus is on home, family, and service to others.";
-                case 7: return "The Seeker: Spirituality, introspection, and wisdom. Your journey is one of deep thought and discovery.";
-                case 8: return "The Achiever: Abundance, power, and ambition. You have the potential for great material and personal success.";
-                case 9: return "The Humanitarian: Completion, compassion, and universal love. Your purpose is to serve humanity.";
-                case 11: return "The Master Intuitive: High intuition, inspiration, and spiritual insight. You are a channel for higher truths.";
-                case 22: return "The Master Builder: Practical idealism, vision, and large-scale creation. You can manifest great dreams.";
-                case 33: return "The Master Teacher: Compassionate service, universal love, and healing. You are here to uplift humanity.";
-                default: return "An unknown cosmic energy surrounds your numbers. Explore further!";
+        // Function to toggle sidebar visibility
+        function toggleSidebar() {
+            sidebar.classList.toggle('open');
+            // Adjust game-content padding based on sidebar state
+            if (sidebar.classList.contains('open')) {
+                document.querySelector('.game-content').style.paddingLeft = '280px';
+            } else {
+                document.querySelector('.game-content').style.paddingLeft = '0';
             }
         }
 
-        function getNumerologyAffirmation(number) {
-            switch (number) {
-                case 1: return { affirmation: "I am a leader. I boldly create my own destiny.", color: "Red", symbol: "Sun" };
-                case 2: return { affirmation: "I attract harmony and partnership into my life.", color: "Orange", symbol: "Moon" };
-                case 3: return { affirmation: "I express my creativity and joy freely.", color: "Yellow", symbol: "Triangle" };
-                case 4: return { affirmation: "I build strong foundations for lasting success.", color: "Green", symbol: "Square" };
-                case 5: return { affirmation: "I embrace change and adventure with confidence.", color: "Blue", symbol: "Star" };
-                case 6: return { affirmation: "I nurture myself and others with compassion.", color: "Indigo", symbol: "Heart" };
-                case 7: return { affirmation: "I trust my intuition and seek deeper wisdom.", color: "Violet", symbol: "Lotus" };
-                case 8: return { affirmation: "I am abundant and achieve my goals.", color: "Gold", symbol: "Infinity" };
-                case 9: return { affirmation: "I share love and kindness with the world.", color: "Silver", symbol: "Circle" };
-                case 11: return { affirmation: "I am inspired and guided by higher wisdom.", color: "White", symbol: "Lightning" };
-                case 22: return { affirmation: "I manifest my grandest dreams into reality.", color: "Turquoise", symbol: "Pyramid" };
-                case 33: return { affirmation: "I uplift others with love and healing.", color: "Pink", symbol: "Dove" };
-                default: return { affirmation: "Embrace your unique cosmic energy!", color: "Mystery", symbol: "?" };
-            }
-        }
-
-        function displayNumerologyFortune(totalSum, selectedNumbersString) {
-            const numerologyNumber = reduceToSingleDigit(totalSum);
-            const meaning = getNumerologyMeaning(numerologyNumber);
-            const { affirmation, color, symbol } = getNumerologyAffirmation(numerologyNumber);
-
-            // Personal Lucky Number logic
-            let personalLucky = document.getElementById('personalLuckyInput').value;
-            let personalLuckyMsg = '';
-            if (personalLucky) {
-                const personalNum = reduceToSingleDigit(parseInt(personalLucky));
-                const personalMeaning = getNumerologyMeaning(personalNum);
-                const personalAff = getNumerologyAffirmation(personalNum);
-                personalLuckyMsg = `
-                    <div style="margin-top:1.2em;padding:1em;background:#23234a;border-radius:0.7em;">
-                        <span style="font-weight:bold;font-size:1.1em;">${translations[currentLang].personalLuckyTitle} ${personalLucky} → ${personalNum}</span><br>
-                        <span>${personalMeaning}</span><br>
-                        <span style=\"color:#8c07d3;font-style:italic;\">${translations[currentLang].affirmation} ${personalAff.affirmation}</span><br>
-                        <span style=\"color:#00bfff;\">${translations[currentLang].luckyColor} ${personalAff.color}</span> &nbsp; <span style=\"color:#ffd700;\">${translations[currentLang].symbol} ${personalAff.symbol}</span>
-                    </div>
-                `;
-            }
-
-            const message = `
-                <p style=\"font-weight: bold; font-size: 1.2em; margin-bottom: 0.5em;\">${translations[currentLang].luckyNumbers} ${selectedNumbersString}</p>
-                <p style=\"font-weight: bold; font-size: 1.5em; margin-bottom: 1em;\">${translations[currentLang].numerologySum} ${numerologyNumber}</p>
-                <p>${meaning}</p>
-                <div style=\"margin-top:0.8em;padding:0.7em;background:#18182e;border-radius:0.7em;\">
-                    <span style=\"color:#8c07d3;font-style:italic;\">${translations[currentLang].affirmation} ${affirmation}</span><br>
-                    <span style=\"color:#00bfff;\">${translations[currentLang].luckyColor} ${color}</span> &nbsp; <span style=\"color:#ffd700;\">${translations[currentLang].symbol} ${symbol}</span>
-                </div>
-                ${personalLuckyMsg}
-            `;
-            window.showMessageBox(message);
-        }
 
         // Initialize and start animation when the window loads
         window.onload = async function() {
             console.log("window.onload: Starting initialization.");
-            console.log("window.onload: window.particles before initThreeJS:", window.particles);
+            
+            // Set initial language
+            window.setLanguage(languageSelect.value);
+
+            // Set initial value for numberOfSelectedParticles from input
+            numberOfSelectedParticles = parseInt(numLuckyNumbersInput.value);
+
+            // Initialize Three.js and particles
             initThreeJS();
             onWindowResize();
 
-            // Attach event listener to the start button
-            const startButton = document.getElementById('startButton');
-            if (startButton) {
-                startButton.addEventListener('click', window.startLuckyDraw);
-            }
+            // Attach event listeners to buttons
+            startButton.addEventListener('click', window.startLuckyDraw);
+            restartButton.addEventListener('click', window.restartSimulation);
+            messageBoxOkButton.addEventListener('click', window.hideMessageBox);
+            messageBoxNewGameButton.addEventListener('click', newGame); // New game button now calls newGame()
+            sidebarToggleButton.addEventListener('click', toggleSidebar); // Attach toggle button listener
+
+            // Open sidebar by default on load
+            sidebar.classList.add('open');
+            document.querySelector('.game-content').style.paddingLeft = '280px';
+
+            // Initial state: particles are floating, not swirling intensely
+            // The `updateParticles` function will handle the floating motion when `isFloating` is true.
+            statusOutput.textContent = translations[currentLanguage].statusInitial;
 
             console.log("window.onload: Initialization complete.");
         };
 
-        // Patch status messages and button text in game logic
-        function updateStatusOutput(key) {
-            document.getElementById('statusOutput').textContent = translations[currentLang][key];
-        }
-
-        // Patch all statusOutput and message usages in game logic
-        // Example: updateStatusOutput('statusSwirl');
-        // In game logic, replace direct statusOutput.textContent assignments:
-        // document.getElementById('statusOutput').textContent = 'Spheres are swirling for luck...';
-        // with updateStatusOutput('statusSwirl');
-        // In initParticles:
-        // updateStatusOutput('statusDefault'); // Reset status text
-        // In startLuckyDraw:
-        // updateStatusOutput('statusSwirl');
-        // In autoSelectLuckyParticles:
-        // updateStatusOutput('statusSelected');
-        // In restartSimulation:
-        // updateStatusOutput('statusDefault');
-        // In error case:
-        // window.showMessageBox(translations[currentLang].errorNoParticles);
-        // In countdown:
-        // countdownDisplay.textContent = translations[currentLang].countdownGo;
-        // --- Touch Support for Sliders and Buttons ---
-        // Make sliders and buttons easier to use on touch devices
-        document.querySelectorAll('.slider-group input[type="range"]').forEach(slider => {
-            slider.addEventListener('touchstart', e => slider.classList.add('active'));
-            slider.addEventListener('touchend', e => slider.classList.remove('active'));
-        });
-        document.querySelectorAll('.action-button, .message-box button').forEach(btn => {
-            btn.addEventListener('touchstart', e => btn.classList.add('active'));
-            btn.addEventListener('touchend', e => btn.classList.remove('active'));
-        });
-        // Visual feedback for slider changes
-        document.querySelectorAll('.slider-group input[type="range"]').forEach(slider => {
-            slider.addEventListener('input', e => {
-                slider.style.background = `linear-gradient(90deg, #8c07d3 ${(slider.value-slider.min)/(slider.max-slider.min)*100}%, #4a4a6a ${(slider.value-slider.min)/(slider.max-slider.min)*100}%)`;
-            });
-        });
-        // Initial slider background
-        document.querySelectorAll('.slider-group input[type="range"]').forEach(slider => {
-            slider.dispatchEvent(new Event('input'));
-        });
     </script>
 </body>
 </html>

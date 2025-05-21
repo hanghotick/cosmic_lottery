@@ -850,7 +850,8 @@
         function startPhysicsWorker() {
             if (!useWorker) return;
             if (physicsWorker) physicsWorker.terminate();
-            physicsWorker = new Worker('worker.js');
+            // Use relative path for GitHub Pages compatibility
+            physicsWorker = new Worker('./worker.js');
             physicsWorker.onmessage = function(e) {
                 const updated = e.data.particles;
                 // Update main thread particle positions/velocities

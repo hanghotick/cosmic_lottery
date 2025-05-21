@@ -1,8 +1,10 @@
-# Cosmic Lottery (Stellar Fortune)
+# Cosmic Lottery 🌌
 
-An interactive, visually stunning 3D particle system game of chance and numerology, built with HTML, CSS, and Three.js. Features a swirling cosmic cube, dynamic particle selection, numerology fortune, and full bilingual support (English/Hungarian).
+A mesmerizing 3D particle visualization system for lottery number generation, built with WebGL and Three.js.
 
-## Features
+## Description
+
+Cosmic Lottery creates an immersive visual experience where particles represent potential lottery numbers, swirling through space until the lucky numbers are selected through an engaging animation sequence. The project combines modern web technologies with beautiful particle physics to make number selection both fun and visually stunning.
 
 - **3D Interactive Cube:** Swirl, drag, and rotate a cube filled with hundreds to tens of thousands of particles.
 - **Dynamic Lucky Draw:** Configure the highest lucky number and how many numbers to draw (1-10). Watch as the system randomly selects and lines up your lucky numbers.

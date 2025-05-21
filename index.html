@@ -7,191 +7,142 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
-        /* Apply Inter font and basic body styling */
-        body {
-            font-family: "Inter", sans-serif;
-            margin: 0;
-            overflow: hidden; /* Prevent scrollbars */
-            background-color: #000000; /* Deep black background */
-            display: flex;
-            flex-direction: column; /* Arrange items vertically */
-            justify-content: flex-start;
-            align-items: center;
-            min-height: 100vh;
-            padding: 0; /* Remove body padding as main-game-screen handles it */
-            box-sizing: border-box;
-            font-size: 16px; /* Base font size for rem units */
+        :root {
+            --primary-color: #8c07d3;
+            --secondary-color: #404080;
+            --background-color: #000;
+            --text-color: #fff;
+            --button-bg: #8c07d3;
+            --button-hover-bg: #a94be7;
+            --button-active-bg: #6a049c;
+            --button-disabled-bg: #bbb;
+            --button-text: #fff;
+            --input-bg: #181828;
+            --input-border: #8c07d3;
+            --input-focus: #a94be7;
+            --spacing: 1rem;
+            --sidebar-width: 280px;
+            --z-overlay: 20000;
         }
 
-        /* Main Game Screen (now always visible from start) */
+        /* Layout and container styles */
         .main-game-screen {
-            display: flex;
-            width: 100%;
+            background: var(--background-color);
             min-height: 100vh;
-            opacity: 1; /* Always visible */
-            visibility: visible; /* Always visible */
-            position: relative; /* For sidebar positioning */
-            justify-content: center; /* Center content horizontally */
-            align-items: center;
-            padding: 1rem; /* Add padding here instead of body */
-            box-sizing: border-box;
+            display: flex;
+            flex-direction: row;
         }
-
-        /* Sidebar Styles */
         .sidebar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            height: 100%;
-            width: 280px; /* Adjust width as needed */
-            background-color: #1a1a2e; /* Dark background */
-            color: white;
-            transform: translateX(-100%); /* Hidden by default */
-            transition: transform 0.3s ease-in-out;
-            z-index: 990; /* Below message box, above game content */
-            padding: 1rem;
-            box-sizing: border-box;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.5);
+            width: var(--sidebar-width);
+            background: #181828;
+            color: var(--text-color);
+            z-index: 1000;
+            transition: left 0.3s;
+            position: relative;
         }
-
         .sidebar.open {
-            transform: translateX(0);
+            left: 0;
         }
-
         .sidebar-toggle-button {
-            position: fixed;
-            top: 1rem;
-            left: 1rem;
-            background-color: #6a05ad;
-            color: white;
+            background: var(--button-bg);
+            color: var(--button-text);
             border: none;
             border-radius: 0.5rem;
-            padding: 0.75rem 1rem;
-            font-size: 1.5rem;
+            padding: 0.5rem 1rem;
+            margin: var(--spacing) 0;
             cursor: pointer;
-            z-index: 995; /* Above sidebar, below message box */
-            transition: background-color 0.3s ease;
+            font-size: 1.2rem;
         }
-
-        .sidebar-toggle-button:hover {
-            background-color: #8c07d3;
-        }
-
         .sidebar-content {
-            width: 100%;
-            padding-top: 3rem; /* Space for toggle button */
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+            padding: var(--spacing);
         }
-
         .game-content {
-            flex-grow: 1; /* Takes up remaining space */
+            flex: 1;
             display: flex;
-            flex-direction: column;
             align-items: center;
-            justify-content: flex-start; /* Align canvas to top within its area */
-            padding-left: 0; /* No padding initially, will adjust if sidebar is open */
-            transition: padding-left 0.3s ease-in-out;
-            height: 100vh; /* Ensure it takes full height */
-            overflow-y: auto; /* Allow scrolling if content overflows */
+            justify-content: center;
+            background: var(--background-color);
+            transition: padding-left 0.3s;
         }
 
-        .sidebar.open + .game-content {
-            padding-left: 280px; /* Shift content when sidebar is open */
-        }
-
-        canvas {
-            display: block;
-            background-color: #000000; /* Match body background from image */
-            border-radius: 1rem; /* Rounded corners for the canvas */
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); /* Subtle shadow */
-            width: 80vw; /* Responsive width */
-            height: 70vh; /* Responsive height */
-            max-width: 1536px; /* Max width for FHD (1920 * 0.8) */
-            max-height: 864px; /* Max height for FHD (1080 * 0.8) - adjust for aspect ratio */
-            margin-bottom: 1rem; /* Space between canvas and controls */
-            cursor: grab; /* Indicate draggable element */
-            margin-top: 1rem; /* Add some space from the top */
-        }
-
-        canvas:active {
-            cursor: grabbing; /* Indicate dragging in progress */
-        }
-
-        /* Controls and output area (now inside sidebar) */
-        .controls-output-container {
-            background-color: #1a1a2e;
-            padding: 1.5rem;
-            border-radius: 1rem;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            width: 100%; /* Take full width of sidebar-content */
-            max-width: 250px; /* Max width for controls within sidebar */
-            margin-top: 1rem; /* Space above controls */
-            margin-bottom: 1rem; /* Ensure space at the bottom when scrolling */
-        }
-
-        .action-button {
-            background-color: #6a05ad; /* Purple button */
-            color: white;
-            padding: 0.75rem 1.5rem; /* Consistent padding for touch targets */
+        /* Button styles */
+        .action-button, #startButton, #restartButton, #messageBoxOkButton, #messageBoxNewGameButton, .sidebar-toggle-button {
+            background: var(--button-bg);
+            color: var(--button-text);
             border: none;
             border-radius: 0.5rem;
+            padding: 0.5rem 1.2rem;
+            margin: 0.5rem 0;
+            font-size: 1rem;
             cursor: pointer;
-            font-size: clamp(1rem, 1.5vw, 1.2rem); /* Responsive font size */
-            transition: background-color 0.3s ease, transform 0.1s ease, opacity 0.3s ease;
-            margin-bottom: 0.75rem; /* Consistent space between buttons */
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3); /* Unified shadow */
+            transition: background 0.2s;
         }
-
-        .action-button:hover {
-            background-color: #8c07d3;
-            transform: translateY(-2px);
+        .action-button:hover, #startButton:hover, #restartButton:hover, #messageBoxOkButton:hover, #messageBoxNewGameButton:hover, .sidebar-toggle-button:hover {
+            background: var(--button-hover-bg);
         }
-
-        .action-button:active {
-            transform: translateY(0);
+        .action-button:active, #startButton:active, #restartButton:active, #messageBoxOkButton:active, #messageBoxNewGameButton:active, .sidebar-toggle-button:active {
+            background: var(--button-active-bg);
         }
-
-        .action-button:disabled {
-            opacity: 0.6;
+        .action-button:disabled, #startButton:disabled, #restartButton:disabled {
+            background: var(--button-disabled-bg);
+            color: #eee;
             cursor: not-allowed;
-            pointer-events: none; /* Disable clicks completely */
         }
 
-        #startButton {
-            font-size: clamp(1.1rem, 1.8vw, 1.4rem); /* Larger font for start button */
-            padding: 1rem 2rem;
-            margin-bottom: 1.5rem;
-            background-color: #00bfff; /* Brighter blue for start button */
+        /* Input and select field styling */
+        .slider-group, .input-group, .language-selector {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: var(--spacing);
+        }
+        .slider-group label, .input-group label, .language-selector label {
+            color: var(--text-color);
+            margin-bottom: 0.3rem;
+            font-size: 1rem;
+        }
+        .slider-group input[type="range"],
+        .input-group input[type="number"],
+        .language-selector select {
+            background: var(--input-bg);
+            color: var(--text-color);
+            border: 1.5px solid var(--input-border);
+            border-radius: 0.4rem;
+            padding: 0.3rem 0.7rem;
+            font-size: 1rem;
+            outline: none;
+            transition: border 0.2s;
+        }
+        .slider-group input[type="range"]:hover,
+        .input-group input[type="number"]:hover,
+        .language-selector select:hover {
+            border-color: var(--input-focus);
+        }
+        .input-group input[type="number"]:focus,
+        .language-selector select:focus {
+            border-color: var(--input-focus);
+        }
+        .input-group input[type="number"].invalid {
+            border-color: #e53e3e;
+            background: #2d1a1a;
+        }
+        .slider-group input[type="range"]::-webkit-slider-thumb {
+            background: var(--primary-color);
+        }
+        .slider-group input[type="range"]::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--primary-color);
+            cursor: pointer;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
         }
 
-        #startButton:hover {
-            background-color: #00aacc;
-        }
-
+        /* Status output */
         #statusOutput {
-            background-color: #2a2a4a;
-            color: #e0e0e0;
-            padding: 1rem;
-            border-radius: 0.75rem;
-            width: 100%;
-            min-height: 50px; /* Ensure it's visible even when empty */
-            text-align: center;
-            font-size: clamp(0.9rem, 1.2vw, 1rem); /* Responsive font size */
-            line-height: 1.4;
-            display: flex; /* Use flex for centering content */
-            align-items: center; /* Center vertically */
-            justify-content: center; /* Center horizontally */
-            word-break: break-word; /* Ensure long words breaks */
-            margin-top: 1rem;
-            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2); /* Subtle inner shadow */
+            color: var(--primary-color);
+            font-weight: bold;
+            margin: 1rem 0;
+            font-size: 1.1rem;
         }
 
         /* Message box styling */
@@ -200,113 +151,18 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background-color: rgba(0, 0, 0, 0.9); /* Darker overlay */
-            color: white;
-            padding: 2rem;
+            background: #22223a;
+            color: var(--text-color);
             border-radius: 1rem;
-            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.7);
-            z-index: 1000;
-            display: none; /* Hidden by default */
+            box-shadow: 0 0 30px #000a;
+            padding: 2rem 2.5rem;
+            z-index: var(--z-overlay);
+            display: none;
+            min-width: 320px;
             text-align: center;
-            font-size: clamp(1rem, 1.5vw, 1.1rem); /* Responsive font size */
-            max-width: 90vw; /* Responsive width */
-            max-height: 90vh; /* Responsive height */
-            overflow-y: auto; /* Scroll if content is too long */
-            border: 2px solid #6a05ad; /* Purple border */
         }
-
         .message-box button {
-            background-color: #6a05ad; /* Purple button */
-            color: white;
-            padding: 0.75rem 1.5rem;
-            border: none;
-            border-radius: 0.5rem;
-            cursor: pointer;
-            margin-top: 1.5rem;
-            transition: background-color 0.3s ease;
-            font-size: inherit; /* Inherit font size from message box */
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3); /* Unified shadow */
-        }
-
-        .message-box button:hover {
-            background-color: #8c07d3;
-        }
-
-        #messageBoxNewGameButton {
-            background-color: #00bfff; /* Brighter blue for New Game button */
-            margin-left: 1rem; /* Space between OK and New Game */
-        }
-        #messageBoxNewGameButton:hover {
-            background-color: #00aacc;
-        }
-
-        /* Input and Select Field Styling */
-        .slider-group, .input-group, .language-selector {
-            width: 100%; /* Take full width of parent (sidebar-content) */
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            margin-bottom: 0.75rem; /* Consistent vertical spacing */
-            color: #e0e0e0;
-            font-size: 0.9rem; /* Slightly smaller font for labels */
-        }
-
-        .slider-group label, .input-group label, .language-selector label {
-            margin-bottom: 0.4rem; /* Reduced space between label and input */
-            text-align: center; /* Center label text */
-        }
-
-        .slider-group input[type="range"],
-        .input-group input[type="number"],
-        .language-selector select {
-            width: 80%; /* Shorter width for inputs */
-            -webkit-appearance: none;
-            appearance: none;
-            padding: 0.5rem 0.75rem; /* Reduced padding for a more compact look */
-            background: #4a4a6a;
-            border: 1px solid #4a4a6a;
-            border-radius: 0.4rem; /* Slightly smaller border-radius */
-            outline: none;
-            opacity: 0.8;
-            transition: opacity .2s, border-color .3s ease;
-            color: #e0e0e0;
-            font-size: 0.9rem; /* Smaller font for input text */
-            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
-        }
-
-        .slider-group input[type="range"]:hover,
-        .input-group input[type="number"]:hover,
-        .language-selector select:hover {
-            opacity: 1;
-        }
-
-        .input-group input[type="number"]:focus,
-        .language-selector select:focus {
-            border-color: #8c07d3;
-        }
-
-        .input-group input[type="number"].invalid {
-            border-color: #ef4444;
-        }
-
-        .slider-group input[type="range"]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 18px; /* Smaller thumb */
-            height: 18px; /* Smaller thumb */
-            border-radius: 50%;
-            background: #8c07d3;
-            cursor: pointer;
-            box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
-        }
-
-        .slider-group input[type="range"]::-moz-range-thumb {
-            width: 18px; /* Smaller thumb */
-            height: 18px; /* Smaller thumb */
-            border-radius: 50%;
-            background: #8c07d3;
-            cursor: pointer;
-            box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+            margin: 0.5rem 0.5rem 0 0.5rem;
         }
 
         /* Loading Spinner Styles */
@@ -320,63 +176,91 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            z-index: 20000;
+            z-index: var(--z-overlay);
         }
-
         .spinner {
             border: 6px solid #eee;
-            border-top: 6px solid #8c07d3;
+            border-top: 6px solid var(--primary-color);
             border-radius: 50%;
             width: 60px;
             height: 60px;
             animation: spin 1s linear infinite;
         }
-
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+
+        /* Responsive design */
+        @media (max-width: 900px) {
+            .main-game-screen {
+                flex-direction: column;
+            }
+            .sidebar {
+                width: 100vw;
+                position: static;
+            }
+            .game-content {
+                padding-left: 0 !important;
+            }
+        }
+        @media (max-width: 600px) {
+            .sidebar-content {
+                padding: 0.5rem;
+            }
+            .message-box {
+                min-width: 90vw;
+                padding: 1rem 0.5rem;
+            }
+            .sidebar-toggle-button {
+                font-size: 1rem;
+                padding: 0.3rem 0.7rem;
+            }
+        }
+        /* End of CSS */
     </style>
 </head>
 <body>
     <div id="mainGameScreen" class="main-game-screen">
-        <div id="sidebar" class="sidebar">
-            <button id="sidebarToggleButton" class="sidebar-toggle-button">☰</button>
+        <div id="sidebar" class="sidebar" aria-label="Sidebar">
+            <button id="sidebarToggleButton" class="sidebar-toggle-button" aria-label="Toggle sidebar">☰</button>
             <div class="sidebar-content">
-                <h1 style="font-size: 1.8rem; color: #00bfff; margin-bottom: 1.5rem; text-shadow: 0 0 8px rgba(0, 191, 255, 0.6);">Stellar Fortune</h1>
-                <div class="language-selector">
-                    <label for="languageSelect" id="labelLanguageSelect"></label>
-                    <select id="languageSelect" onchange="window.setLanguage(this.value)">
-                        <option value="en">English</option>
-                        <option value="hu">Magyar</option>
-                    </select>
-                </div>
-                <div class="input-group">
-                    <label for="maxNumberInput" id="labelMaxNumberInput"></label>
-                    <input type="number" id="maxNumberInput" min="6" max="10000" value="10000">
-                </div>
-                <div class="input-group">
-                    <label for="numLuckyNumbersInput" id="labelNumLuckyNumbers"></label>
-                    <input type="number" id="numLuckyNumbersInput" min="1" max="10" value="6">
-                </div>
-                <div class="slider-group">
-                    <label for="zoomSlider" id="labelZoomSlider"></label>
-                    <input type="range" id="zoomSlider" min="100" max="500" value="160" oninput="window.updateInitialCameraZoom(this.value)">
-                </div>
-                <button class="action-button" id="startButton"></button>
-                <button class="action-button" id="restartButton"></button>
-                <div id="statusOutput" class="llm-output"></div>
+                <h1 style="font-size:1.5rem; font-weight:bold; margin-bottom:1.5rem;">Stellar Fortune</h1>
+                <form aria-label="Game Settings" autocomplete="off">
+                    <div class="language-selector">
+                        <label for="languageSelect" id="labelLanguageSelect">Language: <span style="color:#aaa;">(Choose language)</span></label>
+                        <select id="languageSelect" aria-label="Language selector">
+                            <option value="en">English</option>
+                            <option value="hu">Magyar</option>
+                        </select>
+                    </div>
+                    <div class="slider-group">
+                        <label for="zoomSlider" id="labelZoomSlider">Initial Zoom:</label>
+                        <input type="range" id="zoomSlider" min="50" max="500" step="1" value="200" aria-valuemin="50" aria-valuemax="500" aria-valuenow="200" aria-label="Initial camera zoom">
+                    </div>
+                    <div class="input-group">
+                        <label for="maxNumberInput" id="labelMaxNumberInput">Highest Lucky Number (1-10000):</label>
+                        <input type="number" id="maxNumberInput" min="1" max="10000" value="1000" aria-label="Highest lucky number">
+                    </div>
+                    <div class="input-group">
+                        <label for="numLuckyNumbersInput" id="labelNumLuckyNumbers">Number of Lucky Numbers (1-10):</label>
+                        <input type="number" id="numLuckyNumbersInput" min="1" max="10" value="6" aria-label="Number of lucky numbers">
+                    </div>
+                    <button type="button" id="startButton" class="action-button" aria-label="Start draw">▶️ Start ▶️</button>
+                    <button type="button" id="restartButton" class="action-button" aria-label="Restart simulation">🔄 Restart Simulation 🔄</button>
+                    <div id="statusOutput" role="status" aria-live="polite"></div>
+                </form>
             </div>
         </div>
         <div class="game-content">
-            <canvas id="particleCanvas"></canvas>
+            <canvas id="particleCanvas" aria-label="3D Particle Simulation"></canvas>
         </div>
     </div>
 
-    <div id="messageBox" class="message-box">
+    <div id="messageBox" class="message-box" role="dialog" aria-modal="true" aria-labelledby="messageText">
         <p id="messageText"></p>
-        <button id="messageBoxOkButton"></button>
-        <button class="action-button" id="messageBoxNewGameButton" style="display: none;"></button>
+        <button id="messageBoxOkButton" class="action-button" aria-label="OK"></button>
+        <button class="action-button" id="messageBoxNewGameButton" style="display: none;" aria-label="New Game"></button>
     </div>
 
     <div id="loadingOverlay" style="display:none;">

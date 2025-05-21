@@ -1,0 +1,86 @@
+{
+    "en": {
+        "gameTitle": "Stellar Fortune",
+        "labels": {
+            "language": "Language:",
+            "zoom": "Initial Zoom:",
+            "maxNumber": "Highest Lucky Number (1 to 10000):",
+            "numLuckyNumbers": "Number of Lucky Numbers (1-10):"
+        },
+        "buttons": {
+            "start": {
+                "initial": "▶️ Start ▶️",
+                "drawing": "✨ Drawing... ✨",
+                "swirling": "🌀 Swirling... 🌀",
+                "blackhole": "🕳️ Collapsing... 🕳️",
+                "selecting": "🎯 Selecting... 🎯",
+                "liningUp": "⭐ Finalizing... ⭐"
+            },
+            "restart": {
+                "initial": "🔄 Restart Simulation 🔄",
+                "restarting": "🔄 Restarting... 🔄"
+            },
+            "newGame": "🌟 New Game 🌟",
+            "ok": "OK"
+        },
+        "status": {
+            "initial": "Click Start to begin the Lucky Draw!",
+            "swirling": "Particles are swirling...",
+            "blackhole": "Entering the cosmic vortex...",
+            "clashing": "Particles clashing together...",
+            "selected": "Lucky Numbers Selected!"
+        },
+        "messages": {
+            "noParticles": "No particles to select from!",
+            "invalidNumber": "Please enter a number greater than or equal to {minParticles}.",
+            "invalidLuckyNumber": "Please enter a number between {min} and {max} for lucky numbers.",
+            "luckyNumbers": "Your Lucky Numbers",
+            "webglLost": "Graphics context lost. Please wait...",
+            "webglRestored": "Graphics restored successfully.",
+            "workerError": "Particle system error. Restarting...",
+            "workerFailure": "Failed to restart particle system"
+        }
+    },
+    "hu": {
+        "gameTitle": "Csillagjóslás",
+        "labels": {
+            "language": "Nyelv:",
+            "zoom": "Kezdeti nagyítás:",
+            "maxNumber": "Legnagyobb szerencseszám (1-10000):",
+            "numLuckyNumbers": "Szerencseszámok száma (1-10):"
+        },
+        "buttons": {
+            "start": {
+                "initial": "▶️ Start ▶️",
+                "drawing": "✨ Sorsolás... ✨",
+                "swirling": "🌀 Örvénylik... 🌀",
+                "blackhole": "🕳️ Összeomlás... 🕳️",
+                "selecting": "🎯 Kiválasztás... 🎯",
+                "liningUp": "⭐ Befejezés... ⭐"
+            },
+            "restart": {
+                "initial": "🔄 Szimuláció újraindítása 🔄",
+                "restarting": "🔄 Újraindítás... 🔄"
+            },
+            "newGame": "🌟 Új Játék 🌟",
+            "ok": "OK"
+        },
+        "status": {
+            "initial": "Kattintson a Start gombra a szerencsesorsolás megkezdéséhez!",
+            "swirling": "A részecskék kavarognak...",
+            "blackhole": "Belépés a kozmikus örvénybe...",
+            "clashing": "Részecskék ütköznek...",
+            "selected": "Szerencseszámok kiválasztva!"
+        },
+        "messages": {
+            "noParticles": "Nincsenek kiválasztható részecskék!",
+            "invalidNumber": "Kérjük, adjon meg legalább {minParticles} számot.",
+            "invalidLuckyNumber": "Kérjük, adjon meg egy számot {min} és {max} között a szerencseszámokhoz.",
+            "luckyNumbers": "Az Ön szerencseszámai",
+            "webglLost": "Grafikus kontextus elveszett. Kérem várjon...",
+            "webglRestored": "Grafika helyreállítva.",
+            "workerError": "Részecske rendszer hiba. Újraindítás...",
+            "workerFailure": "Nem sikerült újraindítani a részecske rendszert"
+        }
+    }
+}

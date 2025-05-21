@@ -146,27 +146,38 @@
             font-size: 1.1rem;
         }
 
-        /* Message box styling */
+        /* Message box styling with animations */
         .message-box {
             position: fixed;
             top: 50%;
             left: 50%;
-            transform: translate(-50%, -50%);
+            transform: translate(-50%, -50%) scale(0.9);
             background: #22223a;
             color: var(--text-color);
             border-radius: 1rem;
             box-shadow: 0 0 30px #000a;
             padding: 2rem 2.5rem;
             z-index: var(--z-overlay);
-            display: none;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             min-width: 320px;
             text-align: center;
         }
-        .message-box button {
-            margin: 0.5rem 0.5rem 0 0.5rem;
+
+        .message-box.show {
+            opacity: 1;
+            visibility: visible;
+            transform: translate(-50%, -50%) scale(1);
         }
 
-        /* Loading Spinner Styles */
+        .message-box.hide {
+            opacity: 0;
+            visibility: hidden;
+            transform: translate(-50%, -50%) scale(0.9);
+        }
+
+        /* Loading overlay with fade */
         #loadingOverlay {
             position: fixed;
             top: 0;
@@ -178,45 +189,62 @@
             align-items: center;
             justify-content: center;
             z-index: var(--z-overlay);
-        }
-        .spinner {
-            border: 6px solid #eee;
-            border-top: 6px solid var(--primary-color);
-            border-radius: 50%;
-            width: 60px;
-            height: 60px;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease-in-out;
         }
 
-        /* Responsive design */
-        @media (max-width: 900px) {
-            .main-game-screen {
-                flex-direction: column;
-            }
-            .sidebar {
-                width: 100vw;
-                position: static;
-            }
-            .game-content {
-                padding-left: 0 !important;
-            }
+        #loadingOverlay.show {
+            opacity: 1;
+            visibility: visible;
         }
-        @media (max-width: 600px) {
-            .sidebar-content {
-                padding: 0.5rem;
-            }
-            .message-box {
-                min-width: 90vw;
-                padding: 1rem 0.5rem;
-            }
-            .sidebar-toggle-button {
-                font-size: 1rem;
-                padding: 0.3rem 0.7rem;
-            }
+
+        /* Phase progress indicator */
+        .phase-progress {
+            position: fixed;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 200px;
+            height: 4px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 2px;
+            overflow: hidden;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease-in-out;
+        }
+
+        .phase-progress.show {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .phase-progress-bar {
+            height: 100%;
+            background: var(--primary-color);
+            width: 0%;
+            transition: width 0.1s linear;
+            box-shadow: 0 0 10px var(--primary-color);
+        }
+
+        /* Phase label */
+        .phase-label {
+            position: fixed;
+            bottom: 3rem;
+            left: 50%;
+            transform: translateX(-50%);
+            color: var(--text-color);
+            font-size: 1rem;
+            text-align: center;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease-in-out;
+        }
+
+        .phase-label.show {
+            opacity: 1;
+            visibility: visible;
         }
         /* End of CSS */
     </style>
@@ -274,10 +302,73 @@
     <script type="module">
         import { PARTICLE_CONFIG, ANIMATION_CONFIG, PHYSICS_CONFIG, CAMERA_CONFIG } from './js/config.js';
         import { ParticleRenderer } from './js/ParticleRenderer.js';
+        import { LanguageManager } from './js/i18n/LanguageManager.js';
 
-        // Global declaration of window.particles to ensure it's available before module scripts
-        window.particles = []; // This will now store particle data, not meshes
-        let particleRenderer = null; // Our new shader-based renderer
+        // Initialize language manager
+        const i18n = new LanguageManager();
+
+        // Progress elements
+        let progressBar = null;
+        let progressLabel = null;
+
+        // Update window.showMessageBox to use animations
+        window.showMessageBox = function(message) {
+            const messageBox = document.getElementById('messageBox');
+            const messageText = document.getElementById('messageText');
+            messageText.innerHTML = message;
+            messageBox.classList.add('show');
+            
+            if (window.luckyParticleSelected) {
+                messageBoxNewGameButton.style.display = 'inline-block';
+                messageBoxNewGameButton.textContent = i18n.t('buttons.newGame');
+            }
+        };
+
+        window.hideMessageBox = function() {
+            const messageBox = document.getElementById('messageBox');
+            messageBox.classList.add('hide');
+            setTimeout(() => {
+                messageBox.classList.remove('show', 'hide');
+                messageBoxNewGameButton.style.display = 'none';
+            }, 300);
+        };
+
+        // Create progress elements
+        function createProgressElements() {
+            // Create progress bar
+            progressBar = document.createElement('div');
+            progressBar.className = 'phase-progress';
+            const bar = document.createElement('div');
+            bar.className = 'phase-progress-bar';
+            progressBar.appendChild(bar);
+            document.body.appendChild(progressBar);
+
+            // Create phase label
+            progressLabel = document.createElement('div');
+            progressLabel.className = 'phase-label';
+            document.body.appendChild(progressLabel);
+        }
+
+        // Update progress display
+        function updateProgress(phase, progress) {
+            if (!progressBar || !progressLabel) return;
+
+            const bar = progressBar.querySelector('.phase-progress-bar');
+            bar.style.width = `${progress * 100}%`;
+            
+            progressBar.classList.add('show');
+            progressLabel.classList.add('show');
+            progressLabel.textContent = i18n.t(`status.${phase}`);
+
+            // Update button states
+            i18n.updateButtonStates(phase);
+        }
+
+        // Hide progress elements
+        function hideProgress() {
+            if (progressBar) progressBar.classList.remove('show');
+            if (progressLabel) progressLabel.classList.remove('show');
+        }
 
         // --- Constants for Magic Numbers ---
         const SIDEBAR_WIDTH = 280;
@@ -950,14 +1041,26 @@
         }
         // --- Initialization and Event Binding ---
         // Initialize everything
-        function init() {
-            // Initial cleanup in case of re-init
+        async function init() {
+            // Initial cleanup
             cleanup();
+            
+            // Initialize language manager
+            await i18n.init(languageSelect.value);
+            
+            // Create progress elements
+            createProgressElements();
             
             // Initialize Three.js
             initThreeJS();
             initWebGLHandlers();
             onWindowResize();
+
+            // Add event listeners
+            addEventListenerWithTracking(languageSelect, 'change', async (e) => {
+                await i18n.setLanguage(e.target.value);
+                i18n.updateUIText();
+            });
 
             // Add tracked event listeners with proper binding
             addEventListenerWithTracking(window, 'resize', onWindowResize, false);

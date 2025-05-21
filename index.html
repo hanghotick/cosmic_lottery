@@ -208,12 +208,23 @@
     <canvas id="particleCanvas"></canvas>
 
     <div class="controls-output-container">
+        <div class="slider-group" style="margin-bottom:1.5rem;">
+            <label for="languageSelect">Language / Nyelv</label>
+            <select id="languageSelect" style="width:60%;padding:0.5em;margin-top:0.5em;border-radius:0.5em;border:1px solid #4a4a6a;background:#23234a;color:#e0e0e0;">
+                <option value="en">English</option>
+                <option value="hu">Magyar</option>
+            </select>
+        </div>
         <div class="slider-group">
-            <label for="zoomSlider">Camera Zoom</label>
+            <label id="zoomSliderLabel" for="zoomSlider">Camera Zoom</label>
             <input type="range" id="zoomSlider" min="50" max="400" value="200" step="1" oninput="window.updateInitialCameraZoom(this.value)">
         </div>
+        <div class="slider-group" style="margin-bottom:1.5rem;">
+            <label id="personalLuckyInputLabel" for="personalLuckyInput">Personal Lucky Number</label>
+            <input type="number" id="personalLuckyInput" min="1" step="1" placeholder="Enter your lucky number..." style="width:60%;padding:0.5em;margin-top:0.5em;border-radius:0.5em;border:1px solid #4a4a6a;background:#23234a;color:#e0e0e0;">
+        </div>
         <button class="action-button" id="startButton">▶️ Start Lucky Draw ▶️</button>
-        <button class="action-button" onclick="window.restartSimulation()">🔄 Restart Simulation 🔄</button>
+        <button class="action-button" id="restartButton">🔄 Restart Simulation 🔄</button>
         <div id="statusOutput" class="llm-output">
             Press Start to begin the Lucky Draw!
         </div>
@@ -300,18 +311,66 @@
         // Debugging: Initial state of window.particles (from module perspective, after imports)
         console.log("Script module (after imports) loaded. Initial window.particles:", window.particles);
 
-        // Function to display messages in a custom message box (moved here for global access)
-        window.showMessageBox = function(message) {
-            const messageBox = document.getElementById('messageBox');
-            const messageText = document.getElementById('messageText');
-            messageText.innerHTML = message;
-            messageBox.style.display = 'block';
+        // --- Language Support ---
+        const translations = {
+            en: {
+                cameraZoom: "Camera Zoom",
+                personalLucky: "Personal Lucky Number",
+                personalLuckyPlaceholder: "Enter your lucky number...",
+                start: "▶️ Start Lucky Draw ▶️",
+                restart: "🔄 Restart Simulation 🔄",
+                statusDefault: "Press Start to begin the Lucky Draw!",
+                statusSwirl: "Spheres are swirling for luck...",
+                statusSelected: "Lucky Numbers Selected!",
+                ok: "OK",
+                countdownGo: "GO!",
+                luckyNumbers: "Your Lucky Numbers:",
+                numerologySum: "Numerology Sum:",
+                affirmation: "Affirmation:",
+                luckyColor: "Lucky Color:",
+                symbol: "Symbol:",
+                personalLuckyTitle: "Your Personal Lucky Number:",
+                errorNoParticles: "No particles to select from!",
+                language: "Language / Nyelv",
+                messageBoxTitle: "Numerology Fortune"
+            },
+            hu: {
+                cameraZoom: "Kamera nagyítás",
+                personalLucky: "Személyes szerencseszám",
+                personalLuckyPlaceholder: "Írd be a szerencseszámod...",
+                start: "▶️ Sorsolás indítása ▶️",
+                restart: "🔄 Szimuláció újraindítása 🔄",
+                statusDefault: "Nyomd meg a Start gombot a sorsoláshoz!",
+                statusSwirl: "A gömbök szerencsét kavarnak...",
+                statusSelected: "Sorsolt számok kiválasztva!",
+                ok: "OK",
+                countdownGo: "RAJT!",
+                luckyNumbers: "Sorsolt számok:",
+                numerologySum: "Numerológiai összeg:",
+                affirmation: "Megerősítés:",
+                luckyColor: "Szerencseszín:",
+                symbol: "Szimbólum:",
+                personalLuckyTitle: "Személyes szerencseszámod:",
+                errorNoParticles: "Nincs elérhető gömb a sorsoláshoz!",
+                language: "Nyelv / Language",
+                messageBoxTitle: "Numerológiai jóslat"
+            }
         };
-
-        // Function to hide the custom message box (moved here for global access)
-        window.hideMessageBox = function() {
-            document.getElementById('messageBox').style.display = 'none';
-        };
+        let currentLang = 'en';
+        function setLanguage(lang) {
+            currentLang = lang;
+            document.getElementById('zoomSliderLabel').textContent = translations[lang].cameraZoom;
+            document.getElementById('personalLuckyInputLabel').textContent = translations[lang].personalLucky;
+            document.getElementById('personalLuckyInput').placeholder = translations[lang].personalLuckyPlaceholder;
+            document.getElementById('startButton').textContent = translations[lang].start;
+            document.getElementById('restartButton').textContent = translations[lang].restart;
+            document.getElementById('statusOutput').textContent = translations[lang].statusDefault;
+            document.getElementById('languageSelect').previousElementSibling.textContent = translations[lang].language;
+            document.getElementById('messageText').parentElement.querySelector('button').textContent = translations[lang].ok;
+        }
+        document.getElementById('languageSelect').addEventListener('change', function() {
+            setLanguage(this.value);
+        });
 
         // --- Three.js Setup ---
         // `window.particles` is now declared globally in a separate script tag above.
@@ -506,7 +565,7 @@
             window.luckyParticleSelected = false;
             explosionActive = false;
             isLiningUp = false;
-            document.getElementById('statusOutput').textContent = 'Press Start to begin the Lucky Draw!';
+            updateStatusOutput('statusDefault'); // Reset status text
             currentOrbitalVelocityFactor = orbitalVelocityFactor;
             currentGravitationalPull = gravitationalPull;
 
@@ -828,7 +887,7 @@
                 return;
             }
             window.simulationStarted = true;
-            document.getElementById('statusOutput').textContent = 'Spheres are swirling for luck...';
+            updateStatusOutput('statusSwirl');
             window.startCountdown();
         };
 
@@ -844,7 +903,7 @@
                 if (countdownValue > 0) {
                     countdownDisplay.textContent = countdownValue;
                 } else {
-                    countdownDisplay.textContent = 'GO!';
+                    countdownDisplay.textContent = translations[currentLang].countdownGo;
                     clearInterval(countdownInterval);
                     setTimeout(() => {
                         window.autoSelectLuckyParticles();
@@ -869,7 +928,7 @@
         window.autoSelectLuckyParticles = function() {
             console.log("autoSelectLuckyParticles: Current window.particles array length:", window.particles.length); // Debugging log
             if (window.particles.length === 0) { // Use window.particles
-                window.showMessageBox('No particles to select from!');
+                window.showMessageBox(translations[currentLang].errorNoParticles);
                 return;
             }
 
@@ -913,7 +972,7 @@
             });
 
             window.luckyParticleSelected = true;
-            document.getElementById('statusOutput').textContent = 'Lucky Numbers Selected!';
+            updateStatusOutput('statusSelected');
 
             const selectedNumbers = selectedParticlesArray.map(p => p.number).join(', ');
             const sumOfNumbers = selectedParticlesArray.reduce((sum, p) => sum + p.number, 0);
@@ -940,6 +999,7 @@
             camera.position.z = initialZoomValue;
             camera.position.y = boxSize * 0.2;
             camera.lookAt(0, 0, 0);
+            updateStatusOutput('statusDefault');
         };
 
         // --- Numerology Logic ---
@@ -977,13 +1037,55 @@
             }
         }
 
+        function getNumerologyAffirmation(number) {
+            switch (number) {
+                case 1: return { affirmation: "I am a leader. I boldly create my own destiny.", color: "Red", symbol: "Sun" };
+                case 2: return { affirmation: "I attract harmony and partnership into my life.", color: "Orange", symbol: "Moon" };
+                case 3: return { affirmation: "I express my creativity and joy freely.", color: "Yellow", symbol: "Triangle" };
+                case 4: return { affirmation: "I build strong foundations for lasting success.", color: "Green", symbol: "Square" };
+                case 5: return { affirmation: "I embrace change and adventure with confidence.", color: "Blue", symbol: "Star" };
+                case 6: return { affirmation: "I nurture myself and others with compassion.", color: "Indigo", symbol: "Heart" };
+                case 7: return { affirmation: "I trust my intuition and seek deeper wisdom.", color: "Violet", symbol: "Lotus" };
+                case 8: return { affirmation: "I am abundant and achieve my goals.", color: "Gold", symbol: "Infinity" };
+                case 9: return { affirmation: "I share love and kindness with the world.", color: "Silver", symbol: "Circle" };
+                case 11: return { affirmation: "I am inspired and guided by higher wisdom.", color: "White", symbol: "Lightning" };
+                case 22: return { affirmation: "I manifest my grandest dreams into reality.", color: "Turquoise", symbol: "Pyramid" };
+                case 33: return { affirmation: "I uplift others with love and healing.", color: "Pink", symbol: "Dove" };
+                default: return { affirmation: "Embrace your unique cosmic energy!", color: "Mystery", symbol: "?" };
+            }
+        }
+
         function displayNumerologyFortune(totalSum, selectedNumbersString) {
             const numerologyNumber = reduceToSingleDigit(totalSum);
             const meaning = getNumerologyMeaning(numerologyNumber);
+            const { affirmation, color, symbol } = getNumerologyAffirmation(numerologyNumber);
+
+            // Personal Lucky Number logic
+            let personalLucky = document.getElementById('personalLuckyInput').value;
+            let personalLuckyMsg = '';
+            if (personalLucky) {
+                const personalNum = reduceToSingleDigit(parseInt(personalLucky));
+                const personalMeaning = getNumerologyMeaning(personalNum);
+                const personalAff = getNumerologyAffirmation(personalNum);
+                personalLuckyMsg = `
+                    <div style="margin-top:1.2em;padding:1em;background:#23234a;border-radius:0.7em;">
+                        <span style="font-weight:bold;font-size:1.1em;">${translations[currentLang].personalLuckyTitle} ${personalLucky} → ${personalNum}</span><br>
+                        <span>${personalMeaning}</span><br>
+                        <span style=\"color:#8c07d3;font-style:italic;\">${translations[currentLang].affirmation} ${personalAff.affirmation}</span><br>
+                        <span style=\"color:#00bfff;\">${translations[currentLang].luckyColor} ${personalAff.color}</span> &nbsp; <span style=\"color:#ffd700;\">${translations[currentLang].symbol} ${personalAff.symbol}</span>
+                    </div>
+                `;
+            }
+
             const message = `
-                <p style="font-weight: bold; font-size: 1.2em; margin-bottom: 0.5em;">Your Lucky Numbers: ${selectedNumbersString}</p>
-                <p style="font-weight: bold; font-size: 1.5em; margin-bottom: 1em;">Numerology Sum: ${numerologyNumber}</p>
+                <p style=\"font-weight: bold; font-size: 1.2em; margin-bottom: 0.5em;\">${translations[currentLang].luckyNumbers} ${selectedNumbersString}</p>
+                <p style=\"font-weight: bold; font-size: 1.5em; margin-bottom: 1em;\">${translations[currentLang].numerologySum} ${numerologyNumber}</p>
                 <p>${meaning}</p>
+                <div style=\"margin-top:0.8em;padding:0.7em;background:#18182e;border-radius:0.7em;\">
+                    <span style=\"color:#8c07d3;font-style:italic;\">${translations[currentLang].affirmation} ${affirmation}</span><br>
+                    <span style=\"color:#00bfff;\">${translations[currentLang].luckyColor} ${color}</span> &nbsp; <span style=\"color:#ffd700;\">${translations[currentLang].symbol} ${symbol}</span>
+                </div>
+                ${personalLuckyMsg}
             `;
             window.showMessageBox(message);
         }
@@ -1004,6 +1106,28 @@
             console.log("window.onload: Initialization complete.");
         };
 
+        // Patch status messages and button text in game logic
+        function updateStatusOutput(key) {
+            document.getElementById('statusOutput').textContent = translations[currentLang][key];
+        }
+
+        // Patch all statusOutput and message usages in game logic
+        // Example: updateStatusOutput('statusSwirl');
+        // In game logic, replace direct statusOutput.textContent assignments:
+        // document.getElementById('statusOutput').textContent = 'Spheres are swirling for luck...';
+        // with updateStatusOutput('statusSwirl');
+        // In initParticles:
+        // updateStatusOutput('statusDefault'); // Reset status text
+        // In startLuckyDraw:
+        // updateStatusOutput('statusSwirl');
+        // In autoSelectLuckyParticles:
+        // updateStatusOutput('statusSelected');
+        // In restartSimulation:
+        // updateStatusOutput('statusDefault');
+        // In error case:
+        // window.showMessageBox(translations[currentLang].errorNoParticles);
+        // In countdown:
+        // countdownDisplay.textContent = translations[currentLang].countdownGo;
     </script>
 </body>
 </html>

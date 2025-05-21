@@ -1,5 +1,11 @@
 import { PARTICLE_CONFIG, ANIMATION_CONFIG, PHYSICS_CONFIG } from './config.js';
 
+// Debug logging helper
+const DEBUG = true;
+function debug(...args) {
+    if (DEBUG) console.log('[ParticleRenderer]', ...args);
+}
+
 export class ParticleRenderer {
     constructor(scene, particleCount) {
         this.scene = scene;
@@ -10,53 +16,67 @@ export class ParticleRenderer {
         this.phaseStartTime = 0;
         this.currentDuration = 0;
         this.targetPositions = new Map();
+        debug('Initializing with', particleCount, 'particles');
         this.initShaders();
     }
 
     async initShaders() {
-        // Load shader files
-        const vertexShader = await fetch('js/shaders/particle.vert').then(r => r.text());
-        const fragmentShader = await fetch('js/shaders/particle.frag').then(r => r.text());
+        try {
+            debug('Loading shaders...');
+            const [vertexResponse, fragmentResponse] = await Promise.all([
+                fetch('js/shaders/particle.vert'),
+                fetch('js/shaders/particle.frag')
+            ]);
 
-        // Create geometry with particle indices
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(this.particleCount * 3);
-        const indices = new Float32Array(this.particleCount);
+            if (!vertexResponse.ok || !fragmentResponse.ok) {
+                throw new Error('Failed to load shaders');
+            }
 
-        for (let i = 0; i < this.particleCount; i++) {
-            indices[i] = 0; // 0 for non-selected, 1 for selected
+            const vertexShader = await vertexResponse.text();
+            const fragmentShader = await fragmentResponse.text();
+            debug('Shaders loaded successfully');
+
+            // Update uniforms with phase information
+            this.material = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: { value: 0 },
+                    center: { value: new THREE.Vector3(0, 0, 0) },
+                    phase: { value: 0 },
+                    phaseProgress: { value: 0 },
+                    targetPosition: { value: new THREE.Vector3() }
+                },
+                vertexShader,
+                fragmentShader,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending
+            });
+
+            // Create geometry with particle indices
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(this.particleCount * 3);
+            const indices = new Float32Array(this.particleCount);
+
+            for (let i = 0; i < this.particleCount; i++) {
+                indices[i] = 0; // 0 for non-selected, 1 for selected
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('particleIndex', new THREE.BufferAttribute(indices, 1));
+
+            // Create points system
+            this.particles = new THREE.Points(geometry, this.material);
+            this.scene.add(this.particles);
+            debug('Particle system initialized');
+
+        } catch (error) {
+            console.error('Shader initialization error:', error);
+            throw error;
         }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('particleIndex', new THREE.BufferAttribute(indices, 1));
-
-        // Create shader material
-        this.material = new THREE.ShaderMaterial({
-            uniforms: {
-                time: { value: 0 },
-                center: { value: new THREE.Vector3(0, 0, 0) },
-                phase: { value: 0 },
-                phaseProgress: { value: 0 },
-                targetPosition: { value: new THREE.Vector3() },
-                color: { value: new THREE.Color().setHSL(
-                    PARTICLE_CONFIG.COLOR.HUE / 360,
-                    PARTICLE_CONFIG.COLOR.SATURATION / 100,
-                    PARTICLE_CONFIG.COLOR.LIGHTNESS / 100
-                )}
-            },
-            vertexShader,
-            fragmentShader,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending
-        });
-
-        // Create points system
-        this.particles = new THREE.Points(geometry, this.material);
-        this.scene.add(this.particles);
     }
 
     setPhase(newPhase, duration) {
+        debug('Setting phase:', newPhase, 'duration:', duration);
         this.phase = newPhase;
         this.phaseStartTime = performance.now();
         this.currentDuration = duration;
@@ -78,7 +98,17 @@ export class ParticleRenderer {
             const elapsed = time - this.phaseStartTime;
             this.phaseProgress = Math.min(1, elapsed / this.currentDuration);
             this.material.uniforms.phaseProgress.value = this.phaseProgress;
+
+            if (this.phaseProgress >= 1) {
+                debug('Phase complete:', this.phase);
+            }
         }
+
+        // Debug frame rate occasionally
+        if (time % 1000 < 16) { // Log every second
+            debug('FPS:', Math.round(1000 / (time - this.lastTime || time)));
+        }
+        this.lastTime = time;
 
         // Update target positions for selected particles
         if (this.selectedIndices.size > 0 && this.phase >= 3) {

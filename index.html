@@ -247,6 +247,43 @@
             visibility: visible;
         }
         /* End of CSS */
+
+        /* Debug overlay */
+        #debugOverlay {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            background: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            font-family: monospace;
+            font-size: 12px;
+            z-index: var(--z-overlay);
+            display: none;
+        }
+
+        #debugOverlay.show {
+            display: block;
+        }
+
+        #debugOverlay pre {
+            margin: 0;
+            white-space: pre-wrap;
+        }
+
+        /* Key indicators */
+        .debug-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+
+        .debug-indicator.success { background: #4ade80; }
+        .debug-indicator.warning { background: #fbbf24; }
+        .debug-indicator.error { background: #ef4444; }
     </style>
 </head>
 <body>
@@ -299,10 +336,20 @@
         </div>
     </div>
 
+    <div id="debugOverlay">
+        <h3 style="margin:0 0 0.5rem">Debug Info</h3>
+        <pre id="debugInfo"></pre>
+        <div id="debugPerformance" style="margin-top:0.5rem"></div>
+    </div>
+
     <script type="module">
         import { PARTICLE_CONFIG, ANIMATION_CONFIG, PHYSICS_CONFIG, CAMERA_CONFIG } from './js/config.js';
         import { ParticleRenderer } from './js/ParticleRenderer.js';
         import { LanguageManager } from './js/i18n/LanguageManager.js';
+        import { Debug } from './js/Debug.js';
+
+        // Initialize debug manager
+        const debug = new Debug();
 
         // Initialize language manager
         const i18n = new LanguageManager();
@@ -947,24 +994,19 @@
         const FRAME_INTERVAL = 1000 / TARGET_FRAMERATE;
         
         function animate(timestamp) {
-            // Ensure we don't stack animation frames
-            if (animationFrameId !== null) {
-                cancelAnimationFrame(animationFrameId);
-            }
-            
             animationFrameId = requestAnimationFrame(animate);
 
-            // Throttle to target framerate
-            const elapsed = timestamp - lastFrameTime;
-            if (elapsed < FRAME_INTERVAL) {
-                return;
-            }
-            lastFrameTime = timestamp - (elapsed % FRAME_INTERVAL);
-
-            // State transitions and timing management with proper error handling
+            // Debug information update
+            debug.updateMetrics();
+            debug.track('Phase', simulationState);
+            debug.track('Selected Particles', selectedParticleIndices.size);
+            
             try {
+                // State transitions and timing management
                 if (isClashing) {
-                    const clashProgress = (Date.now() - clashStartTime) / explosionDuration;
+                    const clashProgress = (Date.now() - clashStartTime) / DURATIONS.EXPLOSION;
+                    debug.track('Clash Progress', `${Math.round(clashProgress * 100)}%`);
+                    
                     if (clashProgress >= 1) {
                         simulationState = SimulationState.LINING_UP;
                         isClashing = false;
@@ -973,7 +1015,9 @@
                         dynamicTargetParticlePositions = generateTargetParticlePositions(selectedParticleIndices.size);
                     }
                 } else if (isLiningUp) {
-                    const lineUpProgress = (Date.now() - lineUpStartTime) / lineUpDuration;
+                    const lineUpProgress = (Date.now() - lineUpStartTime) / DURATIONS.LINE_UP;
+                    debug.track('Line-up Progress', `${Math.round(lineUpProgress * 100)}%`);
+                    
                     if (lineUpProgress >= 1 && !window.luckyParticleSelected) {
                         window.luckyParticleSelected = true;
                         showLuckyNumbers();
@@ -982,114 +1026,50 @@
 
                 updateParticles();
                 renderer.render(scene, camera);
+
             } catch (error) {
                 console.error('Animation error:', error);
+                debug.track('Last Error', error.message);
                 cleanup();
-                showError(translations[currentLanguage].messageErrorAnimation || "Animation error occurred. Please restart.");
+                showError(i18n.t('messages.animationError'));
             }
         }
 
-        // Enhanced particle selection and line-up
-        window.autoSelectLuckyParticles = function() {
-            if (!window.particles || window.particles.length === 0) {
-                showError(translations[currentLanguage].messageNoParticles);
-                return;
-            }
-
-            // Clear any previous selection
-            selectedParticleIndices.clear();
-
-            // Get number of particles to select from input
-            const numToSelect = parseInt(numLuckyNumbersInput.value);
-            if (isNaN(numToSelect) || numToSelect < 1 || numToSelect > 10) {
-                showError(translations[currentLanguage].messageInvalidLuckyNumberInput
-                    .replace('{min}', '1')
-                    .replace('{max}', '10'));
-                return;
-            }
-
-            // Select random particles
-            while (selectedParticleIndices.size < numToSelect) {
-                const randomIndex = Math.floor(Math.random() * window.particles.length);
-                selectedParticleIndices.add(randomIndex);
-            }
-
-            // Update worker with selected indices
-            if (worker) {
-                worker.postMessage({
-                    command: 'updateSelected',
-                    selected: Array.from(selectedParticleIndices)
-                });
-            }
-        }
-
-        // Enhanced results display
-        function showLuckyNumbers() {
-            const t = translations[currentLanguage];
-            let luckyNumbers = Array.from(selectedParticleIndices)
-                .map(index => window.particles[index].number)
-                .sort((a, b) => a - b);
-
-            let message = `<h2 style="color:#a94be7;margin-bottom:1rem">${t.messageLuckyNumbers}</h2>`;
-            message += `<div style="font-size:1.5rem;margin-bottom:1rem">`;
-            message += luckyNumbers.join(' - ');
-            message += '</div>';
-
-            window.showMessageBox(message);
-            statusOutput.textContent = t.statusSelected;
-            messageBoxNewGameButton.style.display = 'inline-block';
-        }
-        // --- Initialization and Event Binding ---
         // Initialize everything
         async function init() {
-            // Initial cleanup
-            cleanup();
-            
-            // Initialize language manager
-            await i18n.init(languageSelect.value);
-            
-            // Create progress elements
-            createProgressElements();
-            
-            // Initialize Three.js
-            initThreeJS();
-            initWebGLHandlers();
-            onWindowResize();
+            try {
+                // Initial cleanup
+                cleanup();
+                
+                // Initialize debug manager
+                debug.init();
+                
+                // Initialize language manager
+                await i18n.init(languageSelect.value);
+                
+                // Create progress elements
+                createProgressElements();
+                
+                // Initialize Three.js
+                initThreeJS();
+                initWebGLHandlers();
+                onWindowResize();
 
-            // Add event listeners
-            addEventListenerWithTracking(languageSelect, 'change', async (e) => {
-                await i18n.setLanguage(e.target.value);
-                i18n.updateUIText();
-            });
+                // Add event listeners
+                addEventListenerWithTracking(languageSelect, 'change', async (e) => {
+                    await i18n.setLanguage(e.target.value);
+                    i18n.updateUIText();
+                });
 
-            // Add tracked event listeners with proper binding
-            addEventListenerWithTracking(window, 'resize', onWindowResize, false);
-            addEventListenerWithTracking(startButton, 'click', () => window.startLuckyDraw(), false);
-            addEventListenerWithTracking(restartButton, 'click', () => window.restartSimulation(), false);
-            addEventListenerWithTracking(messageBoxOkButton, 'click', () => window.hideMessageBox(), false);
-            addEventListenerWithTracking(messageBoxNewGameButton, 'click', () => newGame(), false);
-            addEventListenerWithTracking(sidebarToggleButton, 'click', () => toggleSidebar(), false);
-
-            const canvasElement = document.getElementById('particleCanvas');
-            addEventListenerWithTracking(canvasElement, 'mousedown', onPointerDown, false);
-            addEventListenerWithTracking(canvasElement, 'mousemove', onPointerMove, false);
-            addEventListenerWithTracking(canvasElement, 'mouseup', onPointerUp, false);
-            addEventListenerWithTracking(canvasElement, 'mouseleave', onPointerUp, false);
-            addEventListenerWithTracking(canvasElement, 'touchstart', onPointerDown, { passive: false });
-            addEventListenerWithTracking(canvasElement, 'touchmove', onPointerMove, { passive: false });
-            addEventListenerWithTracking(canvasElement, 'touchend', onPointerUp, false);
-            addEventListenerWithTracking(canvasElement, 'touchcancel', onPointerUp, false);
-            addEventListenerWithTracking(canvasElement, 'wheel', onMouseWheel, { passive: false });
-
-            // Set initial button states
-            startButton.disabled = false;
-            restartButton.disabled = true;
-
-            // Start animation
-            animate();
-            
-            // Set initial status
-            statusOutput.textContent = translations[currentLanguage].statusInitial;
+                // Start animation
+                animate();
+                
+                debug.track('Initialization', 'Complete');
+            } catch (error) {
+                console.error('Initialization error:', error);
+                debug.track('Init Error', error.message);
+                showError(i18n.t('messages.initError'));
+            }
         }
 
         // Update window.onload to use init function

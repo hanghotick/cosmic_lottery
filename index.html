@@ -208,10 +208,13 @@
 
     <div class="controls-output-container">
         <div class="slider-group">
+            <label for="zoomSlider">Camera Zoom</label>
+            <input type="range" id="zoomSlider" min="50" max="400" value="200" step="1" oninput="window.updateInitialCameraZoom(this.value)">
         </div>
         <button class="action-button" id="startButton">▶️ Start Lucky Draw ▶️</button>
         <button class="action-button" onclick="window.restartSimulation()">🔄 Restart Simulation 🔄</button>
         <div id="statusOutput" class="llm-output">
+            Press Start to begin the Lucky Draw!
         </div>
     </div>
 

@@ -70,6 +70,15 @@ message_box_panel = Panel(scale=0.5, origin=(0,0), color=color.black66, z=-2, en
 message_box_text = Text(text='', parent=message_box_panel, scale=0.1, origin=(0,0), color=color.white)
 message_box_button = Button(text='OK', parent=message_box_panel, scale=(0.2, 0.1), origin=(0, -0.4), color=color.magenta, on_click=lambda: hide_message_box())
 
+# Camera zoom slider UI (to match HTML version)
+zoom_slider = Slider(min=50, max=400, default=160, step=1, x=0, y=-0.3, scale=0.5, color=color.gray, text='Camera Zoom')
+def on_zoom_slider_change():
+    global initial_zoom_value
+    initial_zoom_value = zoom_slider.value
+    camera.world_position = Vec3(0, BOX_SIZE * 0.2, initial_zoom_value)
+    camera.look_at(Vec3(0,0,0))
+zoom_slider.on_value_changed = on_zoom_slider_change
+
 # --- Utility Functions ---
 def show_message_box(message):
     message_box_text.text = message

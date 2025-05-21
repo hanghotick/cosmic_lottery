@@ -10,6 +10,14 @@ let selectedIndices = null;
 const PARTICLE_STRIDE = 3; // x, y, z components per particle
 const VALIDATION_ERROR = 'validation_error';
 
+// Easing functions for smooth transitions
+const easing = {
+    easeInCubic: t => t * t * t,
+    easeOutCubic: t => 1 - Math.pow(1 - t, 3),
+    easeInOutCubic: t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
+    easeInExpo: t => t === 0 ? 0 : Math.pow(2, 10 * t - 10)
+};
+
 // Create a shared buffer for transferring data
 let sharedParticleBuffer = null;
 let isProcessing = false; // Prevent concurrent updates
@@ -93,22 +101,32 @@ function updateParticlePhysics(params, phase, time, lineUpStartTime, lineUpDurat
     const particleCount = particlePositions.length / PARTICLE_STRIDE;
     const center = [0, 0, 0];
 
+    // Calculate phase-specific parameters with easing
+    let currentGravity = params.gravitationalPull;
+    let currentOrbital = params.orbitalVelocityFactor;
+
+    if (phase === 'blackhole') {
+        const progress = Math.min(1, (time - params.blackholeStartTime) / params.blackholeDuration);
+        const easeValue = easing.easeInExpo(progress);
+        
+        // Dramatically increase forces during blackhole phase
+        currentGravity = params.gravitationalPull + 
+            (params.maxGravitationalPull - params.gravitationalPull) * easeValue;
+        currentOrbital = params.orbitalVelocityFactor + 
+            (params.maxOrbitalVelocityFactor - params.orbitalVelocityFactor) * easeValue;
+    }
+
     // Pre-calculate common values
     const halfBox = params.boxSize / 2;
     const peculiarDelta = (Math.random() - 0.5) * params.peculiarVelocityChangeRate;
-
-    // Transition factors for smooth animations
-    let transitionFactor = 1;
-    if (phase === 'clashing') {
-        transitionFactor = Math.min(1, (time - params.clashStartTime) / params.explosionDuration);
-    } else if (phase === 'liningUp') {
-        transitionFactor = Math.min(1, (time - lineUpStartTime) / lineUpDuration);
-    }
     
     // Update each particle
     for (let i = 0; i < particleCount; i++) {
         const baseIndex = i * PARTICLE_STRIDE;
         const isSelected = selectedIndices.includes(i);
+
+        // Skip selected particles during lineup phase
+        if (phase === 'liningUp' && isSelected) continue;
 
         // Apply damping to velocity
         for (let d = 0; d < PARTICLE_STRIDE; d++) {
@@ -120,29 +138,23 @@ function updateParticlePhysics(params, phase, time, lineUpStartTime, lineUpDurat
             case 'floating':
                 applyFloatingPhysics(baseIndex, params);
                 break;
-
             case 'swirling':
-                applySwirlPhysics(baseIndex, params, center);
+                applySwirlPhysics(baseIndex, params, center, currentGravity, currentOrbital);
                 break;
-
+            case 'blackhole':
+                applyBlackholePhysics(baseIndex, params, center, currentGravity, currentOrbital);
+                break;
             case 'clashing':
-                if (isSelected) {
-                    applyClashPhysics(baseIndex, params, center, transitionFactor);
-                } else {
-                    // Non-selected particles fade away
-                    applyFadeAwayPhysics(baseIndex, params, transitionFactor);
-                }
-                break;
-
-            case 'liningUp':
-                if (isSelected) {
-                    applyLineUpPhysics(baseIndex, i, params, dynamicTargetParticlePositions, transitionFactor);
-                }
+                applyClashPhysics(baseIndex, params, center, isSelected);
                 break;
         }
 
-        // Update positions and handle boundary collisions
-        handleBoundaryCollisions(baseIndex, halfBox, params.particleRadius);
+        // Handle boundary collisions with fadeout for non-selected particles
+        if (phase === 'blackhole' || phase === 'clashing') {
+            handleBlackholeCollisions(baseIndex, halfBox, params.particleRadius, isSelected);
+        } else {
+            handleBoundaryCollisions(baseIndex, halfBox, params.particleRadius);
+        }
     }
 }
 
@@ -165,7 +177,7 @@ function applyFloatingPhysics(baseIndex, params) {
     }
 }
 
-function applySwirlPhysics(baseIndex, params, center) {
+function applySwirlPhysics(baseIndex, params, center, currentGravity, currentOrbital) {
     // Calculate direction and distance from center
     const pos = [
         particlePositions[baseIndex],
@@ -193,20 +205,54 @@ function applySwirlPhysics(baseIndex, params, center) {
     // Enhanced swirl effect
     for (let d = 0; d < PARTICLE_STRIDE; d++) {
         // Stronger gravitational pull
-        particleVelocities[baseIndex + d] -= direction[d] * distance * params.currentGravitationalPull * 1.5;
+        particleVelocities[baseIndex + d] -= direction[d] * distance * currentGravity * 1.5;
         
         // Enhanced orbital velocity with vertical component
         const tangentialForce = d === 0 ? direction[2] : (d === 2 ? -direction[0] : direction[1] * 0.5);
-        particleVelocities[baseIndex + d] += tangentialForce * distance * params.currentOrbitalVelocityFactor * 1.2;
+        particleVelocities[baseIndex + d] += tangentialForce * distance * currentOrbital * 1.2;
         
         // Controlled random motion for visual interest
         particleVelocities[baseIndex + d] += (Math.random() - 0.5) * params.galacticRandomMotion * 0.8;
     }
 }
 
-function applyClashPhysics(baseIndex, params, center, transitionFactor) {
-    const clashForce = 0.008 * transitionFactor;
-    const randomSpread = 0.002 * (1 - transitionFactor);
+function applyBlackholePhysics(baseIndex, params, center, currentGravity, currentOrbital) {
+    const pos = [
+        particlePositions[baseIndex],
+        particlePositions[baseIndex + 1],
+        particlePositions[baseIndex + 2]
+    ];
+    
+    const direction = [
+        pos[0] - center[0],
+        pos[1] - center[1],
+        pos[2] - center[2]
+    ];
+    
+    const distance = Math.sqrt(
+        direction[0] * direction[0] +
+        direction[1] * direction[1] +
+        direction[2] * direction[2]
+    ) || 1;
+
+    // Normalize direction and apply intensified gravitational pull
+    for (let d = 0; d < PARTICLE_STRIDE; d++) {
+        direction[d] /= distance;
+        // Stronger inward pull
+        particleVelocities[baseIndex + d] -= direction[d] * distance * currentGravity * 2;
+        
+        // Enhanced orbital velocity
+        const tangentialForce = d === 0 ? direction[2] : (d === 2 ? -direction[0] : 0);
+        particleVelocities[baseIndex + d] += tangentialForce * distance * currentOrbital * 1.5;
+        
+        // Add some chaos
+        particleVelocities[baseIndex + d] += (Math.random() - 0.5) * params.galacticRandomMotion * 2;
+    }
+}
+
+function applyClashPhysics(baseIndex, params, center, isSelected) {
+    const clashForce = 0.008;
+    const randomSpread = 0.002;
 
     for (let d = 0; d < PARTICLE_STRIDE; d++) {
         const toCenter = center[d] - particlePositions[baseIndex + d];
@@ -215,30 +261,32 @@ function applyClashPhysics(baseIndex, params, center, transitionFactor) {
     }
 }
 
-function applyFadeAwayPhysics(baseIndex, params, transitionFactor) {
-    // Particles spiral outward and fade
-    const spiralForce = 0.01 * transitionFactor;
-    const outwardForce = 0.005 * transitionFactor;
+function handleBlackholeCollisions(baseIndex, halfBox, particleRadius, isSelected) {
+    const distanceToCenter = Math.sqrt(
+        particlePositions[baseIndex] * particlePositions[baseIndex] +
+        particlePositions[baseIndex + 1] * particlePositions[baseIndex + 1] +
+        particlePositions[baseIndex + 2] * particlePositions[baseIndex + 2]
+    );
 
-    for (let d = 0; d < PARTICLE_STRIDE; d++) {
-        const pos = particlePositions[baseIndex + d];
-        const spiral = d === 0 ? pos : (d === 2 ? -pos : 0);
-        particleVelocities[baseIndex + d] += spiral * spiralForce;
-        particleVelocities[baseIndex + d] += pos * outwardForce;
+    // If particle gets too close to center and isn't selected, gradually fade it out
+    if (!isSelected && distanceToCenter < halfBox * 0.1) {
+        // Fade out by reducing velocity
+        for (let d = 0; d < PARTICLE_STRIDE; d++) {
+            particleVelocities[baseIndex + d] *= 0.95;
+        }
     }
-}
 
-function applyLineUpPhysics(baseIndex, particleIndex, params, targetPositions, transitionFactor) {
-    if (!targetPositions || particleIndex >= targetPositions.length) return;
-
-    const target = targetPositions[particleIndex];
-    const lineUpForce = 0.1 * transitionFactor;
-    const stabilizationForce = 0.02 * transitionFactor;
-
+    // Normal boundary handling
     for (let d = 0; d < PARTICLE_STRIDE; d++) {
-        const toTarget = (target[d] || 0) - particlePositions[baseIndex + d];
-        particleVelocities[baseIndex + d] += toTarget * lineUpForce;
-        particleVelocities[baseIndex + d] *= (1 - stabilizationForce); // Dampen velocity for stability
+        particlePositions[baseIndex + d] += particleVelocities[baseIndex + d];
+        
+        if (particlePositions[baseIndex + d] + particleRadius > halfBox) {
+            particleVelocities[baseIndex + d] *= -0.8; // Reduced bounce for more dramatic effect
+            particlePositions[baseIndex + d] = halfBox - particleRadius;
+        } else if (particlePositions[baseIndex + d] - particleRadius < -halfBox) {
+            particleVelocities[baseIndex + d] *= -0.8;
+            particlePositions[baseIndex + d] = -halfBox + particleRadius;
+        }
     }
 }
 

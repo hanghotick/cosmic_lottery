@@ -272,37 +272,45 @@
     </div>
 
     <script type="module">
+        import { PARTICLE_CONFIG, ANIMATION_CONFIG, PHYSICS_CONFIG, CAMERA_CONFIG } from './js/config.js';
+        import { ParticleRenderer } from './js/ParticleRenderer.js';
+
         // Global declaration of window.particles to ensure it's available before module scripts
         window.particles = []; // This will now store particle data, not meshes
-        console.log("Global script: window.particles initialized to:", window.particles);
+        let particleRenderer = null; // Our new shader-based renderer
 
         // --- Constants for Magic Numbers ---
         const SIDEBAR_WIDTH = 280;
-        const PARTICLE_SPACING = 20;
-        const PARTICLE_RADIUS = 1.0;
-        const BOX_SIZE = 200;
-        const MIN_CAMERA_Z = 50;
-        const MAX_CAMERA_Z = 500;
-        const ZOOM_SENSITIVITY = 0.1;
-        const SWIRL_DURATION = 10000; // ms
-        const EXPLOSION_DURATION = 3000; // ms
-        const LINE_UP_DURATION = 2000; // ms
-        const PARTICLE_SPEED_FACTOR = 0.002;
-        const DAMPING = 0.9995;
-        const PARTICLE_COLOR_HUE = 270;
-        const PARTICLE_COLOR_SATURATION = 70;
-        const PARTICLE_COLOR_LIGHTNESS = 60;
-        const MAX_PARTICLE_NUMBER = 10000;
-        const MIN_LUCKY_NUMBERS = 1;
-        const MAX_LUCKY_NUMBERS = 10;
+        
+        // Use imported configs
+        const {
+            STRIDE,
+            RADIUS,
+            SPACING,
+            MAX_COUNT,
+            COLOR
+        } = PARTICLE_CONFIG;
 
-        // --- State Management ---
-        const SimulationState = Object.freeze({
-            FLOATING: 'floating',
-            SWIRLING: 'swirling',
-            CLASHING: 'clashing',
-            LINING_UP: 'liningUp',
-        });
+        const {
+            PHASES,
+            DURATIONS,
+            EASING
+        } = ANIMATION_CONFIG;
+
+        const {
+            BOX_SIZE,
+            DAMPING,
+            SPEED_FACTOR,
+            GRAVITY_BASE,
+            ORBITAL_BASE,
+            RANDOM_MOTION,
+            GRAVITY_MAX,
+            ORBITAL_MAX,
+            ACCELERATION
+        } = PHYSICS_CONFIG;
+
+        // State Management
+        const SimulationState = Object.freeze(PHASES);
         let simulationState = SimulationState.FLOATING;
 
         // --- Event Listener Management ---
@@ -714,11 +722,16 @@
             }
             activeTimers.clear();
 
+            // Clean up particle renderer
+            if (particleRenderer) {
+                particleRenderer.dispose();
+                particleRenderer = null;
+            }
+
             // Clean up textures
             for (const [key, texture] of textureCache.entries()) {
                 texture.dispose();
                 if (texture.image && texture.image instanceof HTMLCanvasElement) {
-                    // Clean up canvas elements
                     texture.image.width = 0;
                     texture.image.height = 0;
                     texture.image = null;
@@ -726,44 +739,18 @@
             }
             textureCache.clear();
 
-            // Dispose of THREE.js resources
-            if (instancedParticles) {
-                if (instancedParticles.material.map) {
-                    instancedParticles.material.map.dispose();
-                }
-                scene.remove(instancedParticles);
-                instancedParticles.geometry.dispose();
-                instancedParticles.material.dispose();
-                instancedParticles = null;
-            }
-
-            // Properly dispose of selected particle meshes
-            selectedParticleMeshes.forEach(mesh => {
-                scene.remove(mesh);
-                if (mesh.geometry) {
-                    mesh.geometry.dispose();
-                }
-                if (mesh.material) {
-                    if (mesh.material.map) mesh.material.map.dispose();
-                    mesh.material.dispose();
-                }
-                if (mesh.children.length > 0) {
-                    mesh.children.forEach(child => {
-                        if (child.geometry) child.geometry.dispose();
-                        if (child.material) {
-                            if (child.material.map) child.material.map.dispose();
-                            child.material.dispose();
-                        }
-                    });
-                }
-            });
-            selectedParticleMeshes = [];
-
+            // Clean up scene
             if (cubeWireframe) {
                 scene.remove(cubeWireframe);
                 cubeWireframe.geometry.dispose();
                 cubeWireframe.material.dispose();
                 cubeWireframe = null;
+            }
+
+            // Clean up WebGL renderer
+            if (renderer) {
+                renderer.state.reset();
+                renderer.renderLists.dispose();
             }
 
             // Remove all event listeners
@@ -776,12 +763,6 @@
             isClashing = false;
             isLiningUp = false;
             window.luckyParticleSelected = false;
-            
-            // Force garbage collection hint
-            if (renderer) {
-                renderer.state.reset();
-                renderer.renderLists.dispose();
-            }
         }
 
         // Enhanced createTextTexture with caching
@@ -1199,6 +1180,49 @@
                 resetState(false);
                 showError(translations[currentLanguage].messageError || "An error occurred. The simulation has been reset.");
             }
+        }
+
+        async function initParticles() {
+            // Clean up existing particles
+            if (particleRenderer) {
+                particleRenderer.dispose();
+            }
+
+            // Initialize particle data
+            const maxNumber = parseInt(maxNumberInput.value);
+            const count = Math.min(maxNumber, MAX_COUNT);
+            window.particles = Array.from({ length: count }, (_, i) => ({
+                number: i + 1,
+                selected: false
+            }));
+
+            // Create new particle renderer
+            particleRenderer = new ParticleRenderer(scene, count);
+            await particleRenderer.initShaders();
+
+            // Initialize worker with particle count
+            if (worker) {
+                worker.postMessage({
+                    command: 'init',
+                    data: { particleCount: count }
+                });
+            }
+        }
+
+        // Update particle visuals with new positions
+        function updateParticleVisuals(positions, velocities) {
+            if (!particleRenderer) return;
+
+            // Update particle positions in the shader
+            particleRenderer.updatePositions(positions);
+            
+            // Update selected particles
+            if (selectedParticleIndices.size > 0) {
+                particleRenderer.updateSelection(selectedParticleIndices);
+            }
+
+            // Update time uniform for animations
+            particleRenderer.updateTime(performance.now() * 0.001);
         }
     </script>
 </body>

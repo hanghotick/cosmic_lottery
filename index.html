@@ -7,40 +7,40 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
-        /* --- Layout & Sizing for Full HD and Responsive Design --- */
+        /* --- Dynamic UI Scaling & Responsive Design --- */
         html, body {
             width: 100vw;
             height: 100vh;
             min-height: 100vh;
             min-width: 100vw;
             box-sizing: border-box;
+            font-size: clamp(14px, 1.2vw + 1vh, 22px); /* Dynamic base font size */
         }
         body {
-            /* Center everything vertically and horizontally */
+            font-family: "Inter", sans-serif;
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: flex-start;
             min-height: 100vh;
-            min-width: 100vw;
-            background-color: #000;
             padding: 0;
         }
         /* --- 3D Canvas Sizing --- */
         #particleCanvas {
             display: block;
-            background-color: #000000;
-            border-radius: 1rem;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            background-color: #000;
+            border-radius: 1.2rem;
+            box-shadow: 0 0.3rem 2rem rgba(0,0,0,0.5);
             width: 85vw;
-            height: 75vh;
             max-width: 1600px;
-            max-height: 810px;
             min-width: 320px;
+            height: 75vh;
+            max-height: 810px;
             min-height: 200px;
-            margin: 0 auto 1.5rem auto;
+            margin: 2.5vh auto 0 auto;
             cursor: grab;
-            position: relative;
             z-index: 1;
         }
         #particleCanvas:active {
@@ -57,20 +57,19 @@
         }
         /* --- Control Panel --- */
         .controls-output-container {
-            position: relative;
-            z-index: 10;
             background-color: #1a1a2e;
-            padding: 2rem 2.5vw 2.5rem 2.5vw;
-            border-radius: 1rem;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-            width: 85vw;
-            max-width: 1600px;
-            min-width: 320px;
-            margin: 0 auto 0 auto;
+            padding: clamp(1.2rem, 2vw, 2.5rem) clamp(1vw, 2vw, 2.5vw);
+            border-radius: 1.2rem;
+            box-shadow: 0 0.3rem 1.5rem rgba(0,0,0,0.3);
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 1.2rem;
+            width: 85vw;
+            max-width: 1600px;
+            min-width: 320px;
+            margin: 2vh auto 0 auto;
+            z-index: 10;
+            gap: clamp(0.7rem, 1.5vw, 2rem);
         }
         /* --- Internal UI Layout --- */
         .slider-group {
@@ -78,81 +77,139 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            margin-bottom: 0.5rem;
+            margin-bottom: clamp(0.5rem, 1vw, 1.5rem);
             color: #e0e0e0;
-            font-size: 0.98rem;
-            gap: 0.5rem;
+            font-size: 1em;
+            gap: clamp(0.3rem, 0.7vw, 1rem);
         }
         .slider-group label {
             margin-bottom: 0.2em;
             font-weight: 500;
+            font-size: 1.05em;
+            letter-spacing: 0.01em;
         }
-        .slider-group input[type="range"], .slider-group input[type="number"], .slider-group select {
-            width: 70%;
-            max-width: 400px;
-            min-width: 120px;
-            margin: 0.2em 0 0.5em 0;
-        }
-        .slider-group input[type="number"] {
-            padding: 0.5em;
-            border-radius: 0.5em;
-            border: 1px solid #4a4a6a;
-            background: #23234a;
-            color: #e0e0e0;
-        }
+        .slider-group input[type="range"],
+        .slider-group input[type="number"],
         .slider-group select {
-            padding: 0.5em;
-            border-radius: 0.5em;
-            border: 1px solid #4a4a6a;
+            width: clamp(120px, 60%, 400px);
+            padding: clamp(0.4em, 0.7vw, 0.7em);
+            margin-top: 0.3em;
+            border-radius: 0.7em;
+            border: 1.5px solid #4a4a6a;
             background: #23234a;
             color: #e0e0e0;
+            font-size: 1em;
+            box-shadow: 0 0.1em 0.5em rgba(0,0,0,0.12);
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .slider-group input[type="number"]:focus,
+        .slider-group select:focus {
+            border-color: #8c07d3;
+            outline: none;
+            box-shadow: 0 0 0 2px #8c07d3aa;
+        }
+        .slider-group input[type="range"] {
+            width: clamp(120px, 80%, 600px);
+            height: 1.1em;
+            background: #4a4a6a;
+            border-radius: 0.5em;
+            outline: none;
+            opacity: 0.8;
+            transition: opacity .2s;
+        }
+        .slider-group input[type="range"]:hover {
+            opacity: 1;
+        }
+        .slider-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 2em;
+            height: 2em;
+            border-radius: 50%;
+            background: #8c07d3;
+            cursor: pointer;
+            box-shadow: 0 0 0.5em rgba(0,0,0,0.5);
+            border: 2px solid #fff;
+            transition: background 0.2s, border 0.2s;
+        }
+        .slider-group input[type="range"]:active::-webkit-slider-thumb {
+            background: #6a05ad;
+            border: 2px solid #00bfff;
+        }
+        .slider-group input[type="range"]::-moz-range-thumb {
+            width: 2em;
+            height: 2em;
+            border-radius: 50%;
+            background: #8c07d3;
+            cursor: pointer;
+            box-shadow: 0 0 0.5em rgba(0,0,0,0.5);
+            border: 2px solid #fff;
+            transition: background 0.2s, border 0.2s;
+        }
+        .slider-group input[type="range"]:active::-moz-range-thumb {
+            background: #6a05ad;
+            border: 2px solid #00bfff;
         }
         /* --- Buttons --- */
         .action-button {
             background-color: #6a05ad;
-            color: white;
-            padding: 0.75rem 1.5rem;
+            color: #fff;
+            padding: clamp(0.6rem, 1.2vw, 1.1rem) clamp(1.1rem, 2vw, 2rem);
             border: none;
-            border-radius: 0.5rem;
+            border-radius: 0.7rem;
             cursor: pointer;
-            font-size: 1.1rem;
-            transition: background-color 0.3s, transform 0.1s;
+            font-size: 1.1em;
+            font-weight: 600;
+            transition: background 0.3s, transform 0.1s, box-shadow 0.2s;
             margin-bottom: 0.5rem;
             margin-top: 0.2rem;
-            min-width: 180px;
+            min-width: 8em;
+            box-shadow: 0 0.1em 0.5em rgba(0,0,0,0.18);
         }
-        .action-button:hover {
+        .action-button:hover, .action-button:focus {
             background-color: #8c07d3;
-            transform: translateY(-2px);
+            transform: translateY(-2px) scale(1.04);
+            box-shadow: 0 0.2em 1em #8c07d355;
+            outline: none;
         }
         .action-button:active {
-            transform: translateY(0);
+            background-color: #4a4a6a;
+            transform: translateY(0) scale(0.98);
         }
         #startButton {
-            font-size: 1.2rem;
-            padding: 1rem 2rem;
-            margin-bottom: 0.5rem;
+            font-size: 1.2em;
+            padding: clamp(0.8rem, 1.5vw, 1.5rem) clamp(1.5rem, 3vw, 2.5rem);
+            margin-bottom: 0.7rem;
             background-color: #00bfff;
+            color: #fff;
         }
-        #startButton:hover {
+        #startButton:hover, #startButton:focus {
             background-color: #00aacc;
+        }
+        #restartButton {
+            background-color: #23234a;
+            color: #fff;
+        }
+        #restartButton:hover, #restartButton:focus {
+            background-color: #2a2a4a;
         }
         /* --- Status Output --- */
         #statusOutput {
             background-color: #2a2a4a;
             color: #e0e0e0;
-            padding: 1rem;
+            padding: clamp(0.7rem, 1vw, 1.2rem) clamp(1rem, 2vw, 1.5rem);
             border-radius: 0.75rem;
             width: 100%;
-            min-height: 50px;
+            min-height: 2.5em;
             text-align: center;
-            font-size: 1.05rem;
+            font-size: 1.05em;
             line-height: 1.4;
             display: flex;
             align-items: center;
             justify-content: center;
             word-break: break-word;
-            margin-top: 0.5rem;
+            margin-top: 0.7rem;
+            box-shadow: 0 0.1em 0.5em rgba(0,0,0,0.10);
         }
         /* --- Message Box & Countdown --- */
         .message-box {
@@ -160,15 +217,15 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background-color: rgba(0, 0, 0, 0.92);
-            color: white;
-            padding: 2rem 2vw;
-            border-radius: 1rem;
-            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.7);
+            background-color: rgba(0,0,0,0.96);
+            color: #fff;
+            padding: clamp(1.2rem, 3vw, 2.5rem) clamp(1.2rem, 3vw, 2.5rem);
+            border-radius: 1.2rem;
+            box-shadow: 0 0.5em 2em rgba(0,0,0,0.7);
             z-index: 2000 !important;
             display: none;
             text-align: center;
-            font-size: 1.1rem;
+            font-size: 1.1em;
             max-width: 90vw;
             max-height: 90vh;
             overflow-y: auto;
@@ -176,26 +233,31 @@
         }
         .message-box button {
             background-color: #6a05ad;
-            color: white;
-            padding: 0.75rem 1.5rem;
+            color: #fff;
+            padding: clamp(0.6rem, 1vw, 1.1rem) clamp(1.1rem, 2vw, 2rem);
             border: none;
-            border-radius: 0.5rem;
+            border-radius: 0.7rem;
             cursor: pointer;
+            font-size: 1.1em;
+            font-weight: 600;
             margin-top: 1.5rem;
-            transition: background-color 0.3s;
+            transition: background 0.3s, box-shadow 0.2s;
+            box-shadow: 0 0.1em 0.5em rgba(0,0,0,0.18);
         }
-        .message-box button:hover {
+        .message-box button:hover, .message-box button:focus {
             background-color: #8c07d3;
+            box-shadow: 0 0.2em 1em #8c07d355;
+            outline: none;
         }
         #countdownDisplay {
             position: fixed;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            font-size: 5rem;
+            font-size: clamp(2.5rem, 7vw, 5rem);
             font-weight: bold;
             color: #8c07d3;
-            text-shadow: 0 0 10px rgba(140, 7, 211, 0.8);
+            text-shadow: 0 0 0.7em #8c07d3cc;
             z-index: 1001 !important;
             display: none;
         }
@@ -225,66 +287,46 @@
         @media (max-width: 900px) {
             #particleCanvas, .controls-output-container {
                 width: 99vw;
-                max-width: 100vw;
                 min-width: 0;
-            }
-            .controls-output-container {
-                padding: 1.2rem 1vw 1.5rem 1vw;
-            }
-        }
-        @media (max-width: 700px) {
-            #particleCanvas, .controls-output-container {
-                width: 100vw;
                 max-width: 100vw;
-                min-width: 0;
             }
-            #particleCanvas {
-                height: 40vh;
-                max-height: 320px;
+            .slider-group input[type="range"],
+            .slider-group input[type="number"],
+            .slider-group select {
+                width: 90vw;
+                max-width: 98vw;
             }
-            .controls-output-container {
-                padding: 0.7rem 0.5vw 1rem 0.5vw;
-                gap: 0.7rem;
-            }
-            .slider-group input[type="range"], .slider-group input[type="number"], .slider-group select {
-                width: 95%;
+            .action-button {
+                width: 90vw;
                 max-width: 98vw;
             }
         }
-        @media (max-width: 500px) {
-            #particleCanvas {
-                height: 30vh;
-                max-height: 180px;
+        @media (max-width: 600px) {
+            #particleCanvas, .controls-output-container {
+                width: 100vw;
+                min-width: 0;
+                max-width: 100vw;
+                border-radius: 0;
             }
             .controls-output-container {
-                padding: 0.3rem 0.2vw 0.7rem 0.2vw;
-                gap: 0.5rem;
+                padding: clamp(0.5rem, 1vw, 1.2rem) 0.2rem;
             }
-            .slider-group label {
-                font-size: 0.95rem;
+            .slider-group input[type="range"],
+            .slider-group input[type="number"],
+            .slider-group select {
+                width: 98vw;
+                max-width: 100vw;
             }
             .action-button {
-                font-size: 0.98rem;
-                min-width: 120px;
-                padding: 0.5rem 0.7rem;
+                width: 98vw;
+                max-width: 100vw;
             }
         }
-        /* Apply Inter font and basic body styling */
-        body {
-            font-family: "Inter", sans-serif;
-            margin: 0;
-            overflow: hidden;
-            background-color: #000000;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-            align-items: center;
-            min-height: 100vh;
-            padding: 0;
-            box-sizing: border-box;
+        /* --- Accessibility: High Contrast for Focused Elements --- */
+        .slider-group input:focus, .slider-group select:focus, .action-button:focus, .message-box button:focus {
+            outline: 2.5px solid #00bfff;
+            outline-offset: 2px;
         }
-
-        /* Lucky History Styling - Removed */
     </style>
 </head>
 <body>
@@ -310,12 +352,12 @@
         </div>
         <div class="slider-group" style="margin-bottom:1.5rem;">
             <label id="personalLuckyInputLabel" for="personalLuckyInput">Personal Lucky Number</label>
-            <input type="number" id="personalLuckyInput" min="1" step="1" placeholder="Enter your lucky number..." style="width:60%;padding:0.5em;margin-top:0.5em;border-radius:0.5em;border:1px solid #4a4a6a;background:#23234a;color:#e0e0e0;">
+            <input type="number" id="personalLuckyInput" min="1" step="1" placeholder="Enter your lucky number (optional)" style="width:60%;padding:0.5em;margin-top:0.5em;border-radius:0.5em;border:1px solid #4a4a6a;background:#23234a;color:#e0e0e0;">
         </div>
-        <button class="action-button" id="startButton">▶️ Start Lucky Draw ▶️</button>
-        <button class="action-button" id="restartButton">🔄 Restart Simulation 🔄</button>
+        <button class="action-button" id="startButton">Start Lucky Draw</button>
+        <button class="action-button" id="restartButton">Restart Simulation</button>
         <div id="statusOutput" class="llm-output">
-            Press Start to begin the Lucky Draw!
+            Press Start to begin the Lucky Draw.
         </div>
     </div>
 
@@ -405,10 +447,10 @@
             en: {
                 cameraZoom: "Camera Zoom",
                 personalLucky: "Personal Lucky Number",
-                personalLuckyPlaceholder: "Enter your lucky number...",
-                start: "▶️ Start Lucky Draw ▶️",
-                restart: "🔄 Restart Simulation 🔄",
-                statusDefault: "Press Start to begin the Lucky Draw!",
+                personalLuckyPlaceholder: "Enter your lucky number (optional)",
+                start: "Start Lucky Draw",
+                restart: "Restart Simulation",
+                statusDefault: "Press Start to begin the Lucky Draw.",
                 statusSwirl: "Spheres are swirling for luck...",
                 statusSelected: "Lucky Numbers Selected!",
                 ok: "OK",
@@ -420,16 +462,16 @@
                 symbol: "Symbol:",
                 personalLuckyTitle: "Your Personal Lucky Number:",
                 errorNoParticles: "No particles to select from!",
-                language: "Language / Nyelv",
+                language: "Language",
                 messageBoxTitle: "Numerology Fortune"
             },
             hu: {
                 cameraZoom: "Kamera nagyítás",
                 personalLucky: "Személyes szerencseszám",
-                personalLuckyPlaceholder: "Írd be a szerencseszámod...",
-                start: "▶️ Sorsolás indítása ▶️",
-                restart: "🔄 Szimuláció újraindítása 🔄",
-                statusDefault: "Nyomd meg a Start gombot a sorsoláshoz!",
+                personalLuckyPlaceholder: "Saját szerencseszám (nem kötelező)",
+                start: "Sorsolás indítása",
+                restart: "Szimuláció újraindítása",
+                statusDefault: "Nyomd meg a Start gombot a sorsoláshoz.",
                 statusSwirl: "A gömbök szerencsét kavarnak...",
                 statusSelected: "Sorsolt számok kiválasztva!",
                 ok: "OK",
@@ -441,7 +483,7 @@
                 symbol: "Szimbólum:",
                 personalLuckyTitle: "Személyes szerencseszámod:",
                 errorNoParticles: "Nincs elérhető gömb a sorsoláshoz!",
-                language: "Nyelv / Language",
+                language: "Nyelv",
                 messageBoxTitle: "Numerológiai jóslat"
             }
         };
@@ -1217,6 +1259,26 @@
         // window.showMessageBox(translations[currentLang].errorNoParticles);
         // In countdown:
         // countdownDisplay.textContent = translations[currentLang].countdownGo;
+        // --- Touch Support for Sliders and Buttons ---
+        // Make sliders and buttons easier to use on touch devices
+        document.querySelectorAll('.slider-group input[type="range"]').forEach(slider => {
+            slider.addEventListener('touchstart', e => slider.classList.add('active'));
+            slider.addEventListener('touchend', e => slider.classList.remove('active'));
+        });
+        document.querySelectorAll('.action-button, .message-box button').forEach(btn => {
+            btn.addEventListener('touchstart', e => btn.classList.add('active'));
+            btn.addEventListener('touchend', e => btn.classList.remove('active'));
+        });
+        // Visual feedback for slider changes
+        document.querySelectorAll('.slider-group input[type="range"]').forEach(slider => {
+            slider.addEventListener('input', e => {
+                slider.style.background = `linear-gradient(90deg, #8c07d3 ${(slider.value-slider.min)/(slider.max-slider.min)*100}%, #4a4a6a ${(slider.value-slider.min)/(slider.max-slider.min)*100}%)`;
+            });
+        });
+        // Initial slider background
+        document.querySelectorAll('.slider-group input[type="range"]').forEach(slider => {
+            slider.dispatchEvent(new Event('input'));
+        });
     </script>
 </body>
 </html>

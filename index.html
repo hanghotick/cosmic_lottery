@@ -7,181 +7,186 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
-        /* Apply Inter font and basic body styling */
-        body {
-            font-family: "Inter", sans-serif;
-            margin: 0;
-            overflow: hidden; /* Prevent scrollbars */
-            background-color: #000000; /* Deep black background from image */
-            display: flex;
-            flex-direction: column; /* Arrange items vertically */
-            justify-content: center;
-            align-items: center;
+        /* --- Layout & Sizing for Full HD and Responsive Design --- */
+        html, body {
+            width: 100vw;
+            height: 100vh;
             min-height: 100vh;
-            padding: 1rem; /* Add some padding around the content */
-            box-sizing: border-box; /* Include padding in element's total width and height */
+            min-width: 100vw;
+            box-sizing: border-box;
         }
-
-        canvas {
-            display: block;
-            background-color: #000000; /* Match body background from image */
-            border-radius: 1rem; /* Rounded corners for the canvas */
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); /* Subtle shadow */
-            width: 90vw; /* Responsive width */
-            height: 70vh; /* Responsive height, leaving space for controls/output */
-            margin-bottom: 1rem; /* Space between canvas and controls */
-            cursor: grab; /* Indicate draggable element */
-        }
-
-        canvas:active {
-            cursor: grabbing; /* Indicate dragging in progress */
-        }
-
-        /* Controls and output area */
-        .controls-output-container {
-            background-color: #1a1a2e;
-            padding: 1.5rem;
-            border-radius: 1rem;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        body {
+            /* Center everything vertically and horizontally */
             display: flex;
             flex-direction: column;
             align-items: center;
-            width: 90vw; /* Match canvas width */
-            max-width: 800px; /* Max width for larger screens */
-            margin-top: 1rem; /* Space above controls */
+            justify-content: flex-start;
+            min-height: 100vh;
+            min-width: 100vw;
+            background-color: #000;
+            padding: 0;
         }
-
+        /* --- 3D Canvas Sizing --- */
+        #particleCanvas {
+            display: block;
+            background-color: #000000;
+            border-radius: 1rem;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            width: 85vw;
+            height: 75vh;
+            max-width: 1600px;
+            max-height: 810px;
+            min-width: 320px;
+            min-height: 200px;
+            margin: 0 auto 1.5rem auto;
+            cursor: grab;
+            position: relative;
+            z-index: 1;
+        }
+        #particleCanvas:active {
+            cursor: grabbing;
+        }
+        /* --- Starfield/Nebula Canvas --- */
+        #starfieldCanvas {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 0 !important;
+            pointer-events: none;
+        }
+        /* --- Control Panel --- */
+        .controls-output-container {
+            position: relative;
+            z-index: 10;
+            background-color: #1a1a2e;
+            padding: 2rem 2.5vw 2.5rem 2.5vw;
+            border-radius: 1rem;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            width: 85vw;
+            max-width: 1600px;
+            min-width: 320px;
+            margin: 0 auto 0 auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.2rem;
+        }
+        /* --- Internal UI Layout --- */
+        .slider-group {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            color: #e0e0e0;
+            font-size: 0.98rem;
+            gap: 0.5rem;
+        }
+        .slider-group label {
+            margin-bottom: 0.2em;
+            font-weight: 500;
+        }
+        .slider-group input[type="range"], .slider-group input[type="number"], .slider-group select {
+            width: 70%;
+            max-width: 400px;
+            min-width: 120px;
+            margin: 0.2em 0 0.5em 0;
+        }
+        .slider-group input[type="number"] {
+            padding: 0.5em;
+            border-radius: 0.5em;
+            border: 1px solid #4a4a6a;
+            background: #23234a;
+            color: #e0e0e0;
+        }
+        .slider-group select {
+            padding: 0.5em;
+            border-radius: 0.5em;
+            border: 1px solid #4a4a6a;
+            background: #23234a;
+            color: #e0e0e0;
+        }
+        /* --- Buttons --- */
         .action-button {
-            background-color: #6a05ad; /* Purple button */
+            background-color: #6a05ad;
             color: white;
             padding: 0.75rem 1.5rem;
             border: none;
             border-radius: 0.5rem;
             cursor: pointer;
-            font-size: 1rem;
-            transition: background-color 0.3s ease, transform 0.1s ease;
-            margin-bottom: 0.75rem; /* Space between buttons */
+            font-size: 1.1rem;
+            transition: background-color 0.3s, transform 0.1s;
+            margin-bottom: 0.5rem;
+            margin-top: 0.2rem;
+            min-width: 180px;
         }
-
         .action-button:hover {
             background-color: #8c07d3;
             transform: translateY(-2px);
         }
-
         .action-button:active {
             transform: translateY(0);
         }
-
         #startButton {
             font-size: 1.2rem;
             padding: 1rem 2rem;
-            margin-bottom: 1.5rem;
-            background-color: #00bfff; /* Brighter blue for start button */
+            margin-bottom: 0.5rem;
+            background-color: #00bfff;
         }
-
         #startButton:hover {
             background-color: #00aacc;
         }
-
+        /* --- Status Output --- */
         #statusOutput {
             background-color: #2a2a4a;
             color: #e0e0e0;
             padding: 1rem;
             border-radius: 0.75rem;
             width: 100%;
-            min-height: 50px; /* Ensure it's visible even when empty */
+            min-height: 50px;
             text-align: center;
-            font-size: 0.95rem;
+            font-size: 1.05rem;
             line-height: 1.4;
-            display: flex; /* Use flex for centering content */
-            align-items: center; /* Center vertically */
-            justify-content: center; /* Center horizontally */
-            word-break: break-word; /* Ensure long words breaks */
-            margin-top: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            word-break: break-word;
+            margin-top: 0.5rem;
         }
-
-        /* Message box styling */
+        /* --- Message Box & Countdown --- */
         .message-box {
             position: fixed;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background-color: rgba(0, 0, 0, 0.9); /* Darker overlay */
+            background-color: rgba(0, 0, 0, 0.92);
             color: white;
-            padding: 2rem;
+            padding: 2rem 2vw;
             border-radius: 1rem;
             box-shadow: 0 8px 30px rgba(0, 0, 0, 0.7);
-            z-index: 1000;
-            display: none; /* Hidden by default */
+            z-index: 2000 !important;
+            display: none;
             text-align: center;
             font-size: 1.1rem;
-            max-width: 90vw; /* Responsive width */
-            max-height: 90vh; /* Responsive height */
-            overflow-y: auto; /* Scroll if content is too long */
-            border: 2px solid #6a05ad; /* Purple border */
+            max-width: 90vw;
+            max-height: 90vh;
+            overflow-y: auto;
+            border: 2px solid #6a05ad;
         }
-
         .message-box button {
-            background-color: #6a05ad; /* Purple button */
+            background-color: #6a05ad;
             color: white;
             padding: 0.75rem 1.5rem;
             border: none;
             border-radius: 0.5rem;
             cursor: pointer;
             margin-top: 1.5rem;
-            transition: background-color 0.3s ease;
+            transition: background-color 0.3s;
         }
-
         .message-box button:hover {
             background-color: #8c07d3;
         }
-
-        .slider-group {
-            width: 100%;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            margin-bottom: 1rem;
-            color: #e0e0e0;
-            font-size: 0.9rem;
-        }
-
-        .slider-group input[type="range"] {
-            width: 80%;
-            -webkit-appearance: none;
-            height: 8px;
-            background: #4a4a6a;
-            border-radius: 5px;
-            outline: none;
-            opacity: 0.7;
-            transition: opacity .2s;
-        }
-
-        .slider-group input[type="range"]:hover {
-            opacity: 1;
-        }
-
-        .slider-group input[type="range"]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            background: #8c07d3;
-            cursor: pointer;
-            box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
-        }
-
-        .slider-group input[type="range"]::-moz-range-thumb {
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            background: #8c07d3;
-            cursor: pointer;
-            box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
-        }
-
-        /* Countdown display styling */
         #countdownDisplay {
             position: fixed;
             top: 50%;
@@ -189,58 +194,97 @@
             transform: translate(-50%, -50%);
             font-size: 5rem;
             font-weight: bold;
-            color: #8c07d3; /* Purple color */
+            color: #8c07d3;
             text-shadow: 0 0 10px rgba(140, 7, 211, 0.8);
-            z-index: 1001; /* Above everything else */
-            display: none; /* Hidden by default */
-        }
-
-        /* Lucky History Styling - Removed */
-
-        /* Restore UI visibility and layering */
-        .controls-output-container, #countdownDisplay, #messageBox, #statusOutput, .slider-group, #startButton, #restartButton, #personalLuckyInput, #personalLuckyInputLabel, #zoomSlider, #zoomSliderLabel, #languageSelect {
-            display: flex !important;
-            opacity: 1 !important;
-            z-index: 10 !important;
-        }
-        .controls-output-container {
-            position: relative;
-            z-index: 10;
-            background-color: #1a1a2e;
-            padding: 1.5rem;
-            border-radius: 1rem;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-        }
-        #countdownDisplay {
             z-index: 1001 !important;
             display: none;
         }
+        /* --- Z-Index & Layering --- */
+        .controls-output-container, #countdownDisplay, #messageBox, #statusOutput, .slider-group, #startButton, #restartButton, #personalLuckyInput, #personalLuckyInputLabel, #zoomSlider, #zoomSliderLabel, #languageSelect {
+            z-index: 10 !important;
+        }
+        #countdownDisplay {
+            z-index: 1001 !important;
+        }
         #messageBox {
             z-index: 2000 !important;
-            display: none;
         }
-        #statusOutput {
+        #statusOutput, .slider-group {
             z-index: 11 !important;
-            display: flex !important;
         }
-        .slider-group {
-            z-index: 11 !important;
-            display: flex !important;
-        }
-        #startButton, #restartButton {
-            z-index: 12 !important;
-            display: inline-block !important;
-        }
-        #personalLuckyInput, #personalLuckyInputLabel, #zoomSlider, #zoomSliderLabel, #languageSelect {
+        #startButton, #restartButton, #personalLuckyInput, #personalLuckyInputLabel, #zoomSlider, #zoomSliderLabel, #languageSelect {
             z-index: 12 !important;
         }
-        /* Ensure starfield is always behind UI */
-        #starfieldCanvas {
-            z-index: 0 !important;
+        /* --- Responsive Breakpoints --- */
+        @media (max-width: 1200px) {
+            #particleCanvas, .controls-output-container {
+                width: 96vw;
+                max-width: 98vw;
+            }
         }
-        #particleCanvas {
-            z-index: 1 !important;
+        @media (max-width: 900px) {
+            #particleCanvas, .controls-output-container {
+                width: 99vw;
+                max-width: 100vw;
+                min-width: 0;
+            }
+            .controls-output-container {
+                padding: 1.2rem 1vw 1.5rem 1vw;
+            }
         }
+        @media (max-width: 700px) {
+            #particleCanvas, .controls-output-container {
+                width: 100vw;
+                max-width: 100vw;
+                min-width: 0;
+            }
+            #particleCanvas {
+                height: 40vh;
+                max-height: 320px;
+            }
+            .controls-output-container {
+                padding: 0.7rem 0.5vw 1rem 0.5vw;
+                gap: 0.7rem;
+            }
+            .slider-group input[type="range"], .slider-group input[type="number"], .slider-group select {
+                width: 95%;
+                max-width: 98vw;
+            }
+        }
+        @media (max-width: 500px) {
+            #particleCanvas {
+                height: 30vh;
+                max-height: 180px;
+            }
+            .controls-output-container {
+                padding: 0.3rem 0.2vw 0.7rem 0.2vw;
+                gap: 0.5rem;
+            }
+            .slider-group label {
+                font-size: 0.95rem;
+            }
+            .action-button {
+                font-size: 0.98rem;
+                min-width: 120px;
+                padding: 0.5rem 0.7rem;
+            }
+        }
+        /* Apply Inter font and basic body styling */
+        body {
+            font-family: "Inter", sans-serif;
+            margin: 0;
+            overflow: hidden;
+            background-color: #000000;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: center;
+            min-height: 100vh;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        /* Lucky History Styling - Removed */
     </style>
 </head>
 <body>
@@ -249,7 +293,7 @@
         console.log("Global script: window.particles initialized to:", window.particles);
     </script>
 
-    <canvas id="starfieldCanvas" style="position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:0; pointer-events:none;"></canvas>
+    <canvas id="starfieldCanvas"></canvas>
     <canvas id="particleCanvas"></canvas>
 
     <div class="controls-output-container">

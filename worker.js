@@ -8,37 +8,78 @@ let selectedIndices = null;
 
 // Constants for physics calculations
 const PARTICLE_STRIDE = 3; // x, y, z components per particle
+const VALIDATION_ERROR = 'validation_error';
 
 // Create a shared buffer for transferring data
 let sharedParticleBuffer = null;
+let isProcessing = false; // Prevent concurrent updates
+
+// Message validation helper
+function validateMessage(data, requiredProps) {
+    for (const prop of requiredProps) {
+        if (!(prop in data)) {
+            throw new Error(`Missing required property: ${prop}`);
+        }
+    }
+}
 
 self.onmessage = function(e) {
-    const { command, data } = e.data;
+    if (isProcessing) {
+        console.warn('Dropping message, still processing previous update');
+        return;
+    }
 
-    switch (command) {
-        case 'init':
-            // Initialize typed arrays with the particle count
-            const { particleCount } = data;
-            initializeArrays(particleCount);
-            break;
+    try {
+        const { command, data } = e.data;
+        isProcessing = true;
 
-        case 'update':
-            // Update particle physics
-            const { params, phase, time, lineUpStartTime, lineUpDuration, dynamicTargetParticlePositions } = data;
-            updateParticlePhysics(params, phase, time, lineUpStartTime, lineUpDuration, dynamicTargetParticlePositions);
-            
-            // Transfer the buffer back to the main thread
-            self.postMessage({
-                command: 'updated',
-                positions: particlePositions.buffer,
-                velocities: particleVelocities.buffer
-            }, [particlePositions.buffer, particleVelocities.buffer]);
-            break;
+        switch (command) {
+            case 'init':
+                validateMessage(data, ['particleCount']);
+                initializeArrays(data.particleCount);
+                break;
 
-        case 'updateSelected':
-            // Update selected particles array
-            selectedIndices = new Uint32Array(data.selected);
-            break;
+            case 'update':
+                validateMessage(data, ['params', 'phase', 'time']);
+                updateParticlePhysics(
+                    data.params,
+                    data.phase,
+                    data.time,
+                    data.lineUpStartTime,
+                    data.lineUpDuration,
+                    data.dynamicTargetParticlePositions
+                );
+                
+                // Transfer the buffer back to the main thread
+                self.postMessage({
+                    command: 'updated',
+                    positions: particlePositions.buffer,
+                    velocities: particleVelocities.buffer
+                }, [particlePositions.buffer, particleVelocities.buffer]);
+
+                // Reallocate buffers after transfer
+                particlePositions = new Float32Array(particlePositions.length);
+                particleVelocities = new Float32Array(particleVelocities.length);
+                break;
+
+            case 'updateSelected':
+                validateMessage(data, ['selected']);
+                if (!Array.isArray(data.selected)) {
+                    throw new Error('Selected particles must be an array');
+                }
+                selectedIndices = new Uint32Array(data.selected);
+                break;
+
+            default:
+                throw new Error(`Unknown command: ${command}`);
+        }
+    } catch (error) {
+        self.postMessage({
+            command: VALIDATION_ERROR,
+            error: error.message
+        });
+    } finally {
+        isProcessing = false;
     }
 };
 

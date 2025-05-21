@@ -306,16 +306,43 @@
         let simulationState = SimulationState.FLOATING;
 
         // --- Event Listener Management ---
-        let eventListeners = [];
+        let eventListeners = new Map(); // Change to Map for better organization
+
         function addEventListenerWithTracking(target, type, handler, options) {
-            target.addEventListener(type, handler, options);
-            eventListeners.push({ target, type, handler, options });
+            // Create wrapped handler that we can reference later
+            const wrappedHandler = (event) => handler(event);
+            target.addEventListener(type, wrappedHandler, options);
+            
+            // Store in map with compound key
+            const key = `${target.id || target.constructor.name}_${type}`;
+            eventListeners.set(key, {
+                target,
+                type,
+                handler: wrappedHandler,
+                options
+            });
         }
+
         function removeAllTrackedEventListeners() {
-            for (const { target, type, handler, options } of eventListeners) {
-                target.removeEventListener(type, handler, options);
+            for (const { target, type, handler, options } of eventListeners.values()) {
+                try {
+                    target.removeEventListener(type, handler, options);
+                } catch (e) {
+                    console.warn(`Failed to remove event listener: ${type}`, e);
+                }
             }
-            eventListeners = [];
+            eventListeners.clear();
+        }
+
+        // Function to remove specific listener
+        function removeTrackedEventListener(target, type) {
+            const key = `${target.id || target.constructor.name}_${type}`;
+            const listener = eventListeners.get(key);
+            if (listener) {
+                const { handler, options } = listener;
+                target.removeEventListener(type, handler, options);
+                eventListeners.delete(key);
+            }
         }
 
         // --- Error Handling and User Feedback ---
@@ -688,26 +715,46 @@
             activeTimers.clear();
 
             // Clean up textures
-            for (const texture of textureCache.values()) {
+            for (const [key, texture] of textureCache.entries()) {
                 texture.dispose();
+                if (texture.image && texture.image instanceof HTMLCanvasElement) {
+                    // Clean up canvas elements
+                    texture.image.width = 0;
+                    texture.image.height = 0;
+                    texture.image = null;
+                }
             }
             textureCache.clear();
 
             // Dispose of THREE.js resources
             if (instancedParticles) {
+                if (instancedParticles.material.map) {
+                    instancedParticles.material.map.dispose();
+                }
                 scene.remove(instancedParticles);
                 instancedParticles.geometry.dispose();
                 instancedParticles.material.dispose();
                 instancedParticles = null;
             }
 
+            // Properly dispose of selected particle meshes
             selectedParticleMeshes.forEach(mesh => {
                 scene.remove(mesh);
-                if (mesh.geometry) mesh.geometry.dispose();
-                if (mesh.material) mesh.material.dispose();
-                if (mesh.children[0]) {
-                    mesh.children[0].geometry.dispose();
-                    mesh.children[0].material.dispose();
+                if (mesh.geometry) {
+                    mesh.geometry.dispose();
+                }
+                if (mesh.material) {
+                    if (mesh.material.map) mesh.material.map.dispose();
+                    mesh.material.dispose();
+                }
+                if (mesh.children.length > 0) {
+                    mesh.children.forEach(child => {
+                        if (child.geometry) child.geometry.dispose();
+                        if (child.material) {
+                            if (child.material.map) child.material.map.dispose();
+                            child.material.dispose();
+                        }
+                    });
                 }
             });
             selectedParticleMeshes = [];
@@ -729,6 +776,12 @@
             isClashing = false;
             isLiningUp = false;
             window.luckyParticleSelected = false;
+            
+            // Force garbage collection hint
+            if (renderer) {
+                renderer.state.reset();
+                renderer.renderLists.dispose();
+            }
         }
 
         // Enhanced createTextTexture with caching
@@ -765,57 +818,103 @@
             canvas.addEventListener('webglcontextlost', handleContextLost, false);
             canvas.addEventListener('webglcontextrestored', handleContextRestored, false);
 
+            let savedState = null;
+
             function handleContextLost(event) {
                 event.preventDefault();
                 console.log("WebGL context lost. Stopping animation...");
+                
+                // Save current state
+                savedState = {
+                    particles: window.particles.slice(),
+                    selectedIndices: Array.from(selectedParticleIndices),
+                    cameraPosition: camera.position.clone(),
+                    cameraRotation: camera.rotation.clone(),
+                    simulationState,
+                    isFloating,
+                    isSwirling,
+                    isClashing,
+                    isLiningUp
+                };
+                
                 cleanup();
-                showError(translations[currentLanguage].messageWebGLContextLost || "Graphics context lost. Please refresh the page.");
+                showError(translations[currentLanguage].messageWebGLContextLost || "Graphics context lost. Please wait...");
             }
 
             async function handleContextRestored() {
                 console.log("WebGL context restored. Reinitializing...");
+                
+                // Reinitialize Three.js
                 await initThreeJS();
+                
+                // Restore saved state if available
+                if (savedState) {
+                    window.particles = savedState.particles;
+                    selectedParticleIndices = new Set(savedState.selectedIndices);
+                    camera.position.copy(savedState.cameraPosition);
+                    camera.rotation.copy(savedState.cameraRotation);
+                    simulationState = savedState.simulationState;
+                    isFloating = savedState.isFloating;
+                    isSwirling = savedState.isSwirling;
+                    isClashing = savedState.isClashing;
+                    isLiningUp = savedState.isLiningUp;
+                    
+                    // Reinitialize particles with saved state
+                    initParticles(window.particles);
+                    
+                    savedState = null;
+                }
+                
                 showMessage(translations[currentLanguage].messageWebGLContextRestored || "Graphics restored successfully.");
             }
         }
 
-        // Enhanced animation function with proper state management
+        // Enhanced animation function with proper frame management
+        let lastFrameTime = 0;
+        const TARGET_FRAMERATE = 60;
+        const FRAME_INTERVAL = 1000 / TARGET_FRAMERATE;
+        
         function animate(timestamp) {
+            // Ensure we don't stack animation frames
+            if (animationFrameId !== null) {
+                cancelAnimationFrame(animationFrameId);
+            }
+            
             animationFrameId = requestAnimationFrame(animate);
 
-            // State transitions and timing management
-            if (isClashing) {
-                const clashProgress = (Date.now() - clashStartTime) / explosionDuration;
-                if (clashProgress >= 1) {
-                    // Transition to lining up phase
-                    simulationState = SimulationState.LINING_UP;
-                    isClashing = false;
-                    isLiningUp = true;
-                    lineUpStartTime = Date.now();
-                    dynamicTargetParticlePositions = generateTargetParticlePositions(selectedParticleIndices.size);
-                }
-            } else if (isLiningUp) {
-                const lineUpProgress = (Date.now() - lineUpStartTime) / lineUpDuration;
-                if (lineUpProgress >= 1 && !window.luckyParticleSelected) {
-                    // Animation complete, show results
-                    window.luckyParticleSelected = true;
-                    showLuckyNumbers();
-                }
+            // Throttle to target framerate
+            const elapsed = timestamp - lastFrameTime;
+            if (elapsed < FRAME_INTERVAL) {
+                return;
             }
+            lastFrameTime = timestamp - (elapsed % FRAME_INTERVAL);
 
-            // Update camera for line-up phase
-            if (isLiningUp) {
-                const progress = Math.min(1, (Date.now() - lineUpStartTime) / lineUpDuration);
-                cameraRadius = initialCameraZForLineUp + (targetCameraZ - initialCameraZForLineUp) * progress;
-                
-                // Update camera position with smooth transition
-                camera.position.x = cameraRadius * Math.sin(cameraTheta) * Math.sin(cameraPhi);
-                camera.position.y = cameraRadius * Math.cos(cameraTheta);
-                camera.position.z = cameraRadius * Math.sin(cameraTheta) * Math.cos(cameraPhi);
+            // State transitions and timing management with proper error handling
+            try {
+                if (isClashing) {
+                    const clashProgress = (Date.now() - clashStartTime) / explosionDuration;
+                    if (clashProgress >= 1) {
+                        simulationState = SimulationState.LINING_UP;
+                        isClashing = false;
+                        isLiningUp = true;
+                        lineUpStartTime = Date.now();
+                        dynamicTargetParticlePositions = generateTargetParticlePositions(selectedParticleIndices.size);
+                    }
+                } else if (isLiningUp) {
+                    const lineUpProgress = (Date.now() - lineUpStartTime) / lineUpDuration;
+                    if (lineUpProgress >= 1 && !window.luckyParticleSelected) {
+                        window.luckyParticleSelected = true;
+                        showLuckyNumbers();
+                    }
+                }
+
+                updateParticles();
+                renderer.render(scene, camera);
+            } catch (error) {
+                console.error('Animation error:', error);
+                cleanup();
+                showError(translations[currentLanguage].messageErrorAnimation || "Animation error occurred. Please restart.");
             }
-
-            updateParticles();
-            renderer.render(scene, camera);
         }
 
         // Enhanced particle selection and line-up
@@ -921,6 +1020,186 @@
         // Handle page unload
         window.addEventListener('unload', cleanup);
 
+        // Enhanced particle state management
+        let particleUpdateQueue = [];
+        let isUpdatingParticles = false;
+        let lastUpdateTime = 0;
+        const UPDATE_INTERVAL = 16; // ~60fps
+
+        async function updateParticles() {
+            const now = performance.now();
+            if (now - lastUpdateTime < UPDATE_INTERVAL) {
+                return;
+            }
+            lastUpdateTime = now;
+
+            if (!worker || isUpdatingParticles) {
+                return;
+            }
+
+            try {
+                isUpdatingParticles = true;
+
+                // Prepare update parameters
+                const updateParams = {
+                    boxSize,
+                    particleSpeedFactor,
+                    damping,
+                    currentGravitationalPull: isSwirling ? currentGravitationalPull : gravitationalPull,
+                    currentOrbitalVelocityFactor: isSwirling ? currentOrbitalVelocityFactor : orbitalVelocityFactor,
+                    galacticRandomMotion,
+                    peculiarVelocity: peculiarVelocity.toArray(),
+                    peculiarVelocityChangeRate,
+                    cosmicExpansionFactor
+                };
+
+                // Send update to worker
+                worker.postMessage({
+                    command: 'update',
+                    data: {
+                        params: updateParams,
+                        phase: simulationState,
+                        time: performance.now(),
+                        lineUpStartTime,
+                        lineUpDuration,
+                        dynamicTargetParticlePositions: dynamicTargetParticlePositions.map(p => p.toArray())
+                    }
+                });
+
+                // Handle worker errors
+                worker.onerror = function(error) {
+                    console.error('Worker error:', error);
+                    handleWorkerError();
+                };
+
+            } catch (error) {
+                console.error('Particle update error:', error);
+                handleWorkerError();
+            } finally {
+                isUpdatingParticles = false;
+            }
+        }
+
+        function handleWorkerError() {
+            // Clean up existing worker
+            if (worker) {
+                worker.terminate();
+                worker = null;
+            }
+
+            // Attempt to recreate worker
+            try {
+                initializeWorker();
+                showError(translations[currentLanguage].messageWorkerRestart || "Particle system restarted due to an error");
+            } catch (error) {
+                console.error('Failed to restart worker:', error);
+                cleanup();
+                showError(translations[currentLanguage].messageWorkerFailure || "Failed to restart particle system");
+            }
+        }
+
+        function initializeWorker() {
+            worker = new Worker('worker.js');
+            worker.postMessage({
+                command: 'init',
+                data: { particleCount: window.particles.length }
+            });
+
+            // Set up worker message handling
+            worker.onmessage = function(e) {
+                const { command, positions, velocities, error } = e.data;
+                
+                if (command === 'validation_error') {
+                    console.error('Worker validation error:', error);
+                    return;
+                }
+
+                if (command === 'updated') {
+                    updateParticleVisuals(positions, velocities);
+                }
+            };
+        }
+
+        // Enhanced state reset and recovery
+        function resetState(fullReset = false) {
+            // Animation state
+            simulationState = SimulationState.FLOATING;
+            isFloating = true;
+            isSwirling = false;
+            isClashing = false;
+            isLiningUp = false;
+            
+            // UI state
+            window.luckyParticleSelected = false;
+            window.simulationStarted = false;
+            
+            // Timer state
+            clashStartTime = 0;
+            lineUpStartTime = 0;
+            lastUpdateTime = 0;
+            lastFrameTime = 0;
+
+            // Motion parameters
+            currentOrbitalVelocityFactor = orbitalVelocityFactor;
+            currentGravitationalPull = gravitationalPull;
+            
+            if (fullReset) {
+                // Full reset includes user inputs
+                maxParticleNumber = 1000;
+                numberOfSelectedParticles = 6;
+                maxNumberInput.value = "1000";
+                numLuckyNumbersInput.value = "6";
+                zoomSlider.value = "200";
+                
+                // Camera reset
+                cameraRadius = parseFloat(zoomSlider.value);
+                cameraPhi = Math.PI / 4;
+                cameraTheta = Math.PI / 2;
+                
+                if (camera) {
+                    camera.position.set(
+                        cameraRadius * Math.sin(cameraTheta) * Math.sin(cameraPhi),
+                        cameraRadius * Math.cos(cameraTheta),
+                        cameraRadius * Math.sin(cameraTheta) * Math.cos(cameraPhi)
+                    );
+                    camera.lookAt(0, 0, 0);
+                }
+            }
+
+            // Clear selections
+            selectedParticleIndices.clear();
+            
+            // Update UI
+            startButton.disabled = false;
+            startButton.textContent = translations[currentLanguage].startButton;
+            restartButton.disabled = true;
+            statusOutput.textContent = translations[currentLanguage].statusInitial;
+            
+            // Hide any open dialogs
+            window.hideMessageBox();
+            
+            // Reset worker if it exists
+            if (worker) {
+                worker.postMessage({
+                    command: 'init',
+                    data: { particleCount: window.particles.length }
+                });
+            }
+        }
+
+        // Enhanced error handling
+        function handleError(error, severity = 'warning') {
+            console.error(`${severity.toUpperCase()}: ${error.message || error}`);
+            
+            if (severity === 'fatal') {
+                cleanup();
+                resetState(true);
+                showError(translations[currentLanguage].messageFatalError || "A fatal error occurred. The application has been reset.");
+            } else {
+                resetState(false);
+                showError(translations[currentLanguage].messageError || "An error occurred. The simulation has been reset.");
+            }
+        }
     </script>
 </body>
 </html>

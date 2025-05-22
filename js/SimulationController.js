@@ -148,34 +148,125 @@ export class SimulationController {
             this.debug.track('Worker Restart Failed', err.message);
             throw new Error('Failed to restart worker: ' + err.message);
         }
-    }
-
-    /**
+    }    /**
      * Update particle visuals with new positions
      */
     updateParticleVisuals() {
         if (!this.particleRenderer) return;
 
-        // Update particle positions in the shader
-        this.particleRenderer.updatePositions(this.particlePositions);
+        // Batch updates for better performance
+        const updates = {
+            positions: this.particlePositions,
+            time: performance.now() * 0.001,
+            selection: this.selectedIndices.size > 0 ? this.selectedIndices : null
+        };
+
+        // Update particle renderer state
+        this.particleRenderer.updatePositions(updates.positions);
+        this.particleRenderer.updateTime(updates.time);
         
-        // Update selected particles
-        if (this.selectedIndices.size > 0) {
-            this.particleRenderer.updateSelection(this.selectedIndices);
+        if (updates.selection) {
+            this.particleRenderer.updateSelection(updates.selection);
         }
 
-        // Update meshes for selected particles
+        // Update selected particle meshes efficiently
+        if (this.selectedIndices.size > 0) {
+            this.updateSelectedMeshes();
+        }
+    }
+
+    /**
+     * Update selected particle meshes efficiently
+     */
+    updateSelectedMeshes() {
+        const now = performance.now();
+        const phase = this.currentPhase;
+        
         for (const [index, mesh] of this.selectedParticleMeshes) {
             const idx = index * 3;
-            mesh.position.set(
+            const position = new THREE.Vector3(
                 this.particlePositions[idx],
                 this.particlePositions[idx + 1],
                 this.particlePositions[idx + 2]
             );
-        }
 
-        // Update time uniform for animations
-        this.particleRenderer.updateTime(performance.now() * 0.001);
+            // Apply phase-specific visual effects
+            switch (phase) {
+                case ANIMATION_CONFIG.PHASES.SWIRLING:
+                    this.applySwirlingEffect(mesh, position, now);
+                    break;
+
+                case ANIMATION_CONFIG.PHASES.BLACKHOLE:
+                    this.applyBlackholeEffect(mesh, position, now);
+                    break;
+
+                case ANIMATION_CONFIG.PHASES.SELECTION:
+                    this.applySelectionEffect(mesh, position, now);
+                    break;
+
+                default:
+                    mesh.position.copy(position);
+            }
+
+            // Update mesh visibility based on phase
+            mesh.visible = this.shouldShowMeshInPhase(phase);
+        }
+    }
+
+    /**
+     * Apply swirling effect to selected particle mesh
+     */
+    applySwirlingEffect(mesh, position, timestamp) {
+        const swirlingFactor = Math.sin(timestamp * 0.001) * 0.2;
+        mesh.position.copy(position);
+        mesh.scale.setScalar(0.5 + swirlingFactor);
+        
+        if (mesh.material) {
+            mesh.material.opacity = 0.7 + swirlingFactor;
+        }
+    }
+
+    /**
+     * Apply blackhole effect to selected particle mesh
+     */
+    applyBlackholeEffect(mesh, position, timestamp) {
+        const distanceFromCenter = position.length();
+        const blackholeEffect = Math.max(0.2, 1 - (distanceFromCenter * 0.1));
+        
+        mesh.position.copy(position);
+        mesh.scale.setScalar(0.5 * blackholeEffect);
+        
+        if (mesh.material) {
+            mesh.material.opacity = blackholeEffect;
+        }
+    }
+
+    /**
+     * Apply selection effect to selected particle mesh
+     */
+    applySelectionEffect(mesh, position, timestamp) {
+        const pulseEffect = 0.2 * Math.sin(timestamp * 0.003) + 1;
+        mesh.position.copy(position);
+        mesh.scale.setScalar(0.5 * pulseEffect);
+        
+        if (mesh.material) {
+            mesh.material.opacity = 1;
+        }
+    }
+
+    /**
+     * Determine if mesh should be visible in current phase
+     */
+    shouldShowMeshInPhase(phase) {
+        switch (phase) {
+            case ANIMATION_CONFIG.PHASES.FLOATING:
+            case ANIMATION_CONFIG.PHASES.LINING_UP:
+                return true;
+            case ANIMATION_CONFIG.PHASES.BLACKHOLE:
+                return false;
+            default:
+                return true;
+        }
     }
 
     /**
@@ -186,14 +277,13 @@ export class SimulationController {
         if (newPhase === ANIMATION_CONFIG.PHASES.SELECTION && !this.luckyParticleSelected) {
             this.startLuckyDraw(this.luckyParticleCount);
         }
-    }
-
-    /**
+    }    /**
      * Update simulation state
      */
     async update(timestamp) {
         if (!this.worker || this.isProcessing || 
-            timestamp - this.lastUpdateTime < this.UPDATE_INTERVAL) {
+            timestamp - this.lastUpdateTime < this.UPDATE_INTERVAL || 
+            !this.simulationStarted) {
             return;
         }
 
@@ -201,35 +291,52 @@ export class SimulationController {
         this.isProcessing = true;
 
         try {
-            // Update phase transitions
+            // Update phase transitions before sending data to worker
+            const previousPhase = this.currentPhase;
             this.updatePhase(timestamp);
-
-            // Update physics parameters
-            const updateParams = {
-                ...PHYSICS_CONFIG,
-                ...this.getCurrentPhaseParams(),
+            
+            // Get current phase parameters
+            const phaseParams = this.getCurrentPhaseParams();
+            
+            // Calculate phase-specific timing parameters
+            const timingParams = {
                 blackholeStartTime: this.blackholeStartTime,
                 blackholeDuration: ANIMATION_CONFIG.DURATIONS.BLACKHOLE,
                 clashStartTime: this.clashStartTime,
                 lineUpStartTime: this.lineUpStartTime,
                 lineUpDuration: this.lineUpDuration,
-                selectedIndices: Array.from(this.selectedIndices),
-                targetPositions: Array.from(this.targetPositions.entries())
+                phaseStartTime: this.phaseStartTime,
+                phaseDuration: ANIMATION_CONFIG.DURATIONS[this.currentPhase.toUpperCase()],
+                currentTime: timestamp
             };
 
-            // Send update to worker
+            // Prepare update data with minimal object spread
+            const updateParams = Object.assign(
+                {},
+                PHYSICS_CONFIG,
+                phaseParams,
+                timingParams,
+                {
+                    selectedIndices: Array.from(this.selectedIndices),
+                    targetPositions: Array.from(this.targetPositions.entries())
+                }
+            );
+
+            // Send update to worker with optimized message
             this.worker.postMessage({
                 command: 'update',
                 data: {
                     params: updateParams,
                     phase: this.currentPhase,
-                    time: timestamp
+                    time: timestamp,
+                    phaseChanged: previousPhase !== this.currentPhase
                 }
             });
             
-            // Update UI progress
+            // Update UI progress and debug info
             const phaseProgress = this.calculatePhaseProgress(timestamp);
             this.ui.updateProgress(this.currentPhase, phaseProgress);
+            this.debug.track('Phase Progress', `${Math.round(phaseProgress * 100)}%`);
             
         } catch (error) {
             this.debug.track('Update Error', error.message);
@@ -335,53 +442,174 @@ export class SimulationController {
                 }
                 break;
         }
-    }
-
-    /**
+    }    /**
      * Set current phase and handle transitions
      */
     setPhase(newPhase) {
         const now = performance.now();
         const oldPhase = this.currentPhase;
+        
+        // Validate phase transition
+        if (!this.isValidPhaseTransition(oldPhase, newPhase)) {
+            this.debug.track('Invalid Phase Transition', `${oldPhase} -> ${newPhase}`);
+            return;
+        }
+
+        // Update phase state
         this.currentPhase = newPhase;
         this.phaseStartTime = now;
+        
+        // Handle phase-specific initialization
+        this.handlePhaseInitialization(newPhase, now);
+        
+        // Update visuals
+        this.updateVisualsForPhase(newPhase);
+        
+        // Notify particle renderer of phase change with duration
+        const phaseDuration = ANIMATION_CONFIG.DURATIONS[newPhase.toUpperCase()];
+        this.particleRenderer.setPhase(
+            Object.values(ANIMATION_CONFIG.PHASES).indexOf(newPhase),
+            phaseDuration
+        );
 
-        switch (newPhase) {
+        // Send comprehensive phase change notification to worker
+        if (this.worker) {
+            this.worker.postMessage({
+                command: 'phaseChange',
+                data: {
+                    oldPhase,
+                    newPhase,
+                    timestamp: now,
+                    duration: phaseDuration,
+                    params: this.getCurrentPhaseParams(),
+                    selectedIndices: Array.from(this.selectedIndices),
+                    targetPositions: Array.from(this.targetPositions.entries())
+                }
+            });
+        }
+
+        this.debug.track('Phase Changed', {
+            from: oldPhase,
+            to: newPhase,
+            duration: phaseDuration,
+            selectedCount: this.selectedIndices.size
+        });
+    }
+
+    /**
+     * Validate phase transition
+     */
+    isValidPhaseTransition(oldPhase, newPhase) {
+        const validTransitions = {
+            [ANIMATION_CONFIG.PHASES.FLOATING]: [ANIMATION_CONFIG.PHASES.SWIRLING],
+            [ANIMATION_CONFIG.PHASES.SWIRLING]: [ANIMATION_CONFIG.PHASES.BLACKHOLE],
+            [ANIMATION_CONFIG.PHASES.BLACKHOLE]: [ANIMATION_CONFIG.PHASES.CLASHING],
+            [ANIMATION_CONFIG.PHASES.CLASHING]: [ANIMATION_CONFIG.PHASES.SELECTION],
+            [ANIMATION_CONFIG.PHASES.SELECTION]: [ANIMATION_CONFIG.PHASES.LINING_UP],
+            [ANIMATION_CONFIG.PHASES.LINING_UP]: []
+        };
+
+        return validTransitions[oldPhase]?.includes(newPhase) || oldPhase === newPhase;
+    }
+
+    /**
+     * Initialize phase-specific state
+     */
+    handlePhaseInitialization(phase, timestamp) {
+        switch (phase) {
             case ANIMATION_CONFIG.PHASES.SWIRLING:
-                this.blackholeStartTime = now + ANIMATION_CONFIG.DURATIONS.SWIRL;
+                this.blackholeStartTime = timestamp + ANIMATION_CONFIG.DURATIONS.SWIRL;
+                // Reset any residual forces
+                if (this.worker) {
+                    this.worker.postMessage({
+                        command: 'resetForces',
+                        data: { timestamp }
+                    });
+                }
                 break;
 
             case ANIMATION_CONFIG.PHASES.BLACKHOLE:
                 this.webglManager.setBlackholeVisibility(true);
+                // Initialize blackhole effect
+                this.webglManager.createBlackholeEffect();
                 break;
 
             case ANIMATION_CONFIG.PHASES.CLASHING:
-                this.clashStartTime = now;
+                this.clashStartTime = timestamp;
                 this.webglManager.setBlackholeVisibility(false);
+                // Clean up blackhole effect
+                this.webglManager.removeBlackholeEffect();
+                break;
+
+            case ANIMATION_CONFIG.PHASES.SELECTION:
+                // Prepare for selection if not already done
+                if (!this.luckyParticleSelected && this.luckyParticleCount) {
+                    this.startLuckyDraw(this.luckyParticleCount);
+                }
                 break;
 
             case ANIMATION_CONFIG.PHASES.LINING_UP:
-                this.lineUpStartTime = now;
+                this.lineUpStartTime = timestamp;
+                // Update target positions for selected particles
+                this.updateSelectedParticleTargets();
                 break;
         }
+    }
 
-        // Update particle renderer
-        this.particleRenderer.setPhase(
-            Object.values(ANIMATION_CONFIG.PHASES).indexOf(newPhase),
-            ANIMATION_CONFIG.DURATIONS[newPhase.toUpperCase()]
-        );
+    /**
+     * Update visuals for the current phase
+     */
+    updateVisualsForPhase(phase) {
+        switch (phase) {
+            case ANIMATION_CONFIG.PHASES.SWIRLING:
+                // Update particle colors for swirling effect
+                this.particleRenderer.setParticleColors(
+                    ANIMATION_CONFIG.COLORS.SWIRL_START,
+                    ANIMATION_CONFIG.COLORS.SWIRL_END
+                );
+                break;
 
-        // Notify worker about phase change
-        this.worker?.postMessage({
-            command: 'phaseChange',
-            data: {
-                oldPhase,
-                newPhase,
-                timestamp: now
-            }
+            case ANIMATION_CONFIG.PHASES.BLACKHOLE:
+                // Apply blackhole visual effects
+                this.particleRenderer.setParticleColors(
+                    ANIMATION_CONFIG.COLORS.BLACKHOLE_START,
+                    ANIMATION_CONFIG.COLORS.BLACKHOLE_END
+                );
+                break;
+
+            case ANIMATION_CONFIG.PHASES.SELECTION:
+                // Highlight selected particles
+                this.particleRenderer.setParticleColors(
+                    ANIMATION_CONFIG.COLORS.SELECTED,
+                    ANIMATION_CONFIG.COLORS.UNSELECTED
+                );
+                break;
+        }
+    }
+
+    /**
+     * Update target positions for selected particles
+     */
+    updateSelectedParticleTargets() {
+        const selectedArray = Array.from(this.selectedIndices);
+        selectedArray.forEach((index, i) => {
+            const targetPos = new THREE.Vector3(
+                -1 + (i * 2 / (selectedArray.length - 1)),
+                0,
+                0
+            );
+            this.targetPositions.set(index, targetPos);
         });
 
-        this.debug.track('Phase Changed', newPhase);
+        // Update worker with new target positions
+        if (this.worker) {
+            this.worker.postMessage({
+                command: 'updateTargets',
+                data: {
+                    targetPositions: Array.from(this.targetPositions.entries())
+                }
+            });
+        }
     }
 
     /**
@@ -558,38 +786,70 @@ export class SimulationController {
             );
             this.targetPositions.set(index, targetPos);
         });
-    }
-
-    /**
+    }    /**
      * Create a mesh for displaying a number
      */
     createNumberMesh(number) {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
-        canvas.width = 64;
-        canvas.height = 64;
+        
+        // Increase canvas size for better quality
+        canvas.width = 128;
+        canvas.height = 128;
+        
+        // Create background glow
+        const gradient = ctx.createRadialGradient(64, 64, 10, 64, 64, 40);
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 0.4)');
+        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 128, 128);
 
-        // Draw number with glow effect
+        // Draw number with enhanced visual effects
         ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
-        ctx.shadowBlur = 8;
+        ctx.shadowBlur = 16;
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 48px Arial';
+        ctx.font = 'bold 72px Arial';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(number.toString(), 32, 32);
+        
+        // Draw outer glow
+        ctx.globalAlpha = 0.4;
+        for (let i = 0; i < 8; i++) {
+            ctx.fillText(number.toString(), 64 + i, 64);
+            ctx.fillText(number.toString(), 64, 64 + i);
+        }
+        
+        // Draw main number
+        ctx.globalAlpha = 1.0;
+        ctx.fillText(number.toString(), 64, 64);
 
-        // Create texture and mesh
+        // Create texture with proper settings
         const texture = new THREE.CanvasTexture(canvas);
         texture.needsUpdate = true;
+        texture.generateMipmaps = true;
+        texture.minFilter = THREE.LinearMipMapLinearFilter;
+        texture.magFilter = THREE.LinearFilter;
 
+        // Create material with enhanced settings
         const material = new THREE.SpriteMaterial({
             map: texture,
             transparent: true,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
+            depthTest: true,
+            depthWrite: false,
+            opacity: 1.0
         });
 
+        // Create sprite with proper rendering settings
         const mesh = new THREE.Sprite(material);
         mesh.scale.set(0.5, 0.5, 1);
+        mesh.renderOrder = 1; // Ensure numbers render on top of particles
+        
+        // Store initial properties for animations
+        mesh.userData.initialScale = new THREE.Vector3(0.5, 0.5, 1);
+        mesh.userData.initialOpacity = 1.0;
+        mesh.userData.number = number;
 
         return mesh;
     }

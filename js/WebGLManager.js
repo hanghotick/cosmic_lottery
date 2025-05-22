@@ -2,40 +2,46 @@
 import { CAMERA_CONFIG, PHYSICS_CONFIG } from './config.js';
 
 /**
- * Manages WebGL context, including setup, context loss, and restoration.
+ * Manages WebGL context, including setup, context loss, and restoration
  */
 export class WebGLManager {
-    constructor(debug, ui) {
+    constructor(debug) {
         this.debug = debug;
-        this.ui = ui;
         
-        // THREE.js components
+        // Three.js core components
         this.scene = null;
         this.camera = null;
         this.renderer = null;
+        
+        // Scene objects
         this.cubeWireframe = null;
+        this.blackholeMesh = null;
+        this.blackholeUniforms = null;
         
-        // Camera controls
-        this.cameraRadius = parseInt(ui.elements.zoomSlider.value);
-        this.cameraPhi = CAMERA_CONFIG.DEFAULT_PHI;
-        this.cameraTheta = CAMERA_CONFIG.DEFAULT_THETA;
-        
-        // Mouse interaction
+        // Camera controls state
         this.isDragging = false;
-        this.previousClientX = 0;
-        this.previousClientY = 0;
-
-        // State management
-        this.savedState = null;
-        this.isContextLost = false;
-
-        this.debug.track('WebGL', 'Created');
+        this.previousMousePosition = { x: 0, y: 0 };
+        this.currentRotation = { x: 0, y: 0 };
+        this.targetRotation = { x: 0, y: 0 };
+        this.cameraDistance = CAMERA_CONFIG.INITIAL_DISTANCE;
+        
+        // Scene state
+        this.isActive = false;
+        this.canvasElement = null;
+        this.resizeObserver = null;
+        
+        // Bind methods
+        this.handleResize = this.handleResize.bind(this);
+        this.onPointerDown = this.onPointerDown.bind(this);
+        this.onPointerMove = this.onPointerMove.bind(this);
+        this.onPointerUp = this.onPointerUp.bind(this);
+        this.onMouseWheel = this.onMouseWheel.bind(this);
     }
 
     /**
      * Initialize Three.js scene and renderer
      */
-    init() {
+    async init() {
         // Check THREE.js availability
         if (typeof THREE === 'undefined') {
             throw new Error('THREE.js library is not loaded');
@@ -43,100 +49,180 @@ export class WebGLManager {
 
         // Scene setup
         this.scene = new THREE.Scene();
-        this.scene.background = null;
+        this.scene.background = null; // Transparent background
 
         // Camera setup
         this.camera = new THREE.PerspectiveCamera(
-            75,
+            CAMERA_CONFIG.FOV,
             window.innerWidth / window.innerHeight,
-            0.1,
-            1000
+            CAMERA_CONFIG.NEAR,
+            CAMERA_CONFIG.FAR
         );
         this.updateCameraPosition();
 
-        // Renderer setup with antialiasing and alpha
-        const canvasElement = document.getElementById('particleCanvas');
-        this.renderer = new THREE.WebGLRenderer({ 
+        // Renderer setup
+        this.canvasElement = document.getElementById('particleCanvas');
+        this.renderer = new THREE.WebGLRenderer({
+            canvas: this.canvasElement,
             antialias: true,
-            canvas: canvasElement,
-            alpha: true 
+            alpha: true
         });
-
-        // Set initial size
-        const initialWidth = Math.min(window.innerWidth * 0.8, 1536);
-        const initialHeight = Math.min(window.innerHeight * 0.7, 864);
-        canvasElement.style.width = `${initialWidth}px`;
-        canvasElement.style.height = `${initialHeight}px`;
-        this.renderer.setSize(initialWidth, initialHeight);
-        this.renderer.setClearColor(0x000000, 0);
-
-        // Add context loss/restore handlers
-        canvasElement.addEventListener('webglcontextlost', this.handleContextLost.bind(this), false);
-        canvasElement.addEventListener('webglcontextrestored', this.handleContextRestored.bind(this), false);
-
-        // Add mouse/touch handlers
-        this.addEventListeners(canvasElement);
-
-        // Create cube wireframe border
-        const geometry = new THREE.BoxGeometry(PHYSICS_CONFIG.BOX_SIZE, PHYSICS_CONFIG.BOX_SIZE, PHYSICS_CONFIG.BOX_SIZE);
-        const edges = new THREE.EdgesGeometry(geometry);
-        this.cubeWireframe = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x404080 }));
-        this.scene.add(this.cubeWireframe);
-
+        this.renderer.setPixelRatio(window.devicePixelRatio);
+        
+        // Initial size setup
+        this.handleResize();
+        
+        // Add event listeners
+        this.setupEventListeners();
+        
+        // Create scene objects
+        await this.createSceneObjects();
+        
+        this.isActive = true;
         this.debug.track('WebGL', 'Initialized');
     }
 
     /**
-     * Update camera position based on spherical coordinates
+     * Create initial scene objects
+     */
+    async createSceneObjects() {
+        // Create wireframe cube
+        this.createWireframeCube();
+        
+        // Create blackhole effect
+        await this.createBlackholeMesh();
+        this.setBlackholeVisibility(false);
+    }
+
+    /**
+     * Create wireframe cube boundary
+     */
+    createWireframeCube() {
+        if (this.cubeWireframe) {
+            this.scene.remove(this.cubeWireframe);
+            this.cubeWireframe.geometry.dispose();
+            this.cubeWireframe.material.dispose();
+        }
+
+        const boxSize = PHYSICS_CONFIG.BOX_SIZE;
+        const geometry = new THREE.BoxGeometry(boxSize, boxSize, boxSize);
+        const material = new THREE.LineBasicMaterial({
+            color: 0x808080,
+            transparent: true,
+            opacity: 0.2
+        });
+
+        this.cubeWireframe = new THREE.LineSegments(
+            new THREE.WireframeGeometry(geometry),
+            material
+        );
+        this.scene.add(this.cubeWireframe);
+    }
+
+    /**
+     * Create blackhole effect mesh
+     */
+    async createBlackholeMesh() {
+        // Create uniforms for blackhole shader
+        this.blackholeUniforms = {
+            time: { value: 0 },
+            resolution: { value: new THREE.Vector2() },
+            radius: { value: 1.0 },
+            distortionStrength: { value: 2.0 }
+        };
+
+        // Create blackhole mesh
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            uniforms: this.blackholeUniforms,
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float time;
+                uniform vec2 resolution;
+                uniform float radius;
+                uniform float distortionStrength;
+                varying vec2 vUv;
+
+                void main() {
+                    vec2 center = vec2(0.5);
+                    vec2 p = (vUv - center) * 2.0;
+                    float dist = length(p);
+                    float angle = atan(p.y, p.x) + time;
+                    
+                    float strength = smoothstep(radius, 0.0, dist);
+                    vec2 distortion = vec2(cos(angle), sin(angle)) * strength * distortionStrength;
+                    
+                    gl_FragColor = vec4(0.0, 0.0, 0.0, strength * 0.8);
+                }
+            `,
+            transparent: true,
+            depthWrite: false
+        });
+
+        this.blackholeMesh = new THREE.Mesh(geometry, material);
+        this.blackholeMesh.frustumCulled = false;
+        this.scene.add(this.blackholeMesh);
+    }
+
+    /**
+     * Update camera position based on current rotation and distance
      */
     updateCameraPosition() {
         if (!this.camera) return;
 
-        this.camera.position.set(
-            this.cameraRadius * Math.sin(this.cameraTheta) * Math.sin(this.cameraPhi),
-            this.cameraRadius * Math.cos(this.cameraTheta),
-            this.cameraRadius * Math.sin(this.cameraTheta) * Math.cos(this.cameraPhi)
-        );
+        const phi = THREE.MathUtils.degToRad(this.currentRotation.y + 90);
+        const theta = THREE.MathUtils.degToRad(this.currentRotation.x);
+
+        this.camera.position.x = this.cameraDistance * Math.sin(phi) * Math.cos(theta);
+        this.camera.position.y = this.cameraDistance * Math.cos(phi);
+        this.camera.position.z = this.cameraDistance * Math.sin(phi) * Math.sin(theta);
+
         this.camera.lookAt(0, 0, 0);
         this.camera.updateProjectionMatrix();
     }
 
     /**
-     * Handle window resize event
+     * Handle window resize
      */
     handleResize() {
-        if (!this.camera || !this.renderer) return;
+        if (!this.camera || !this.renderer || !this.canvasElement) return;
 
-        const width = window.innerWidth;
-        const height = window.innerHeight;
+        const width = this.canvasElement.clientWidth;
+        const height = this.canvasElement.clientHeight;
 
         this.camera.aspect = width / height;
         this.camera.updateProjectionMatrix();
 
-        this.renderer.setSize(width, height);
+        this.renderer.setSize(width, height, false);
+        
+        if (this.blackholeUniforms) {
+            this.blackholeUniforms.resolution.value.set(width, height);
+        }
     }
 
     /**
-     * Add event listeners for mouse/touch interaction
+     * Set up event listeners
      */
-    addEventListeners(canvasElement) {
-        // Mouse events
-        canvasElement.addEventListener('mousedown', this.onPointerDown.bind(this), false);
-        canvasElement.addEventListener('mousemove', this.onPointerMove.bind(this), false);
-        canvasElement.addEventListener('mouseup', this.onPointerUp.bind(this), false);
-        canvasElement.addEventListener('mouseleave', this.onPointerUp.bind(this), false);
+    setupEventListeners() {
+        // Resize handling
+        this.resizeObserver = new ResizeObserver(this.handleResize);
+        this.resizeObserver.observe(this.canvasElement);
 
-        // Touch events
-        canvasElement.addEventListener('touchstart', this.onPointerDown.bind(this), { passive: false });
-        canvasElement.addEventListener('touchmove', this.onPointerMove.bind(this), { passive: false });
-        canvasElement.addEventListener('touchend', this.onPointerUp.bind(this), false);
-        canvasElement.addEventListener('touchcancel', this.onPointerUp.bind(this), false);
+        // Pointer events for camera control
+        this.canvasElement.addEventListener('pointerdown', this.onPointerDown);
+        window.addEventListener('pointermove', this.onPointerMove);
+        window.addEventListener('pointerup', this.onPointerUp);
+        this.canvasElement.addEventListener('wheel', this.onMouseWheel);
 
-        // Zoom
-        canvasElement.addEventListener('wheel', this.onMouseWheel.bind(this), { passive: false });
-
-        // Window resize
-        window.addEventListener('resize', this.handleResize.bind(this), false);
+        // Context loss handling
+        this.canvasElement.addEventListener('webglcontextlost', this.handleContextLost.bind(this));
+        this.canvasElement.addEventListener('webglcontextrestored', this.handleContextRestored.bind(this));
     }
 
     /**
@@ -144,14 +230,9 @@ export class WebGLManager {
      */
     onPointerDown(event) {
         this.isDragging = true;
-        if (event.touches) {
-            this.previousClientX = event.touches[0].clientX;
-            this.previousClientY = event.touches[0].clientY;
-        } else {
-            this.previousClientX = event.clientX;
-            this.previousClientY = event.clientY;
-        }
-        event.preventDefault();
+        this.previousMousePosition.x = event.clientX;
+        this.previousMousePosition.y = event.clientY;
+        this.canvasElement.style.cursor = 'grabbing';
     }
 
     /**
@@ -160,29 +241,18 @@ export class WebGLManager {
     onPointerMove(event) {
         if (!this.isDragging) return;
 
-        let currentClientX, currentClientY;
-        if (event.touches) {
-            currentClientX = event.touches[0].clientX;
-            currentClientY = event.touches[0].clientY;
-        } else {
-            currentClientX = event.clientX;
-            currentClientY = event.clientY;
-        }
+        const deltaX = event.clientX - this.previousMousePosition.x;
+        const deltaY = event.clientY - this.previousMousePosition.y;
 
-        const deltaX = currentClientX - this.previousClientX;
-        const deltaY = currentClientY - this.previousClientY;
-
-        this.cameraPhi -= deltaX * 0.005;
-        this.cameraTheta = Math.max(
-            0.01,
-            Math.min(Math.PI - 0.01, this.cameraTheta - deltaY * 0.005)
+        this.targetRotation.x += deltaX * CAMERA_CONFIG.ROTATION_SPEED;
+        this.targetRotation.y = THREE.MathUtils.clamp(
+            this.targetRotation.y + deltaY * CAMERA_CONFIG.ROTATION_SPEED,
+            -85,
+            85
         );
 
-        this.updateCameraPosition();
-
-        this.previousClientX = currentClientX;
-        this.previousClientY = currentClientY;
-        event.preventDefault();
+        this.previousMousePosition.x = event.clientX;
+        this.previousMousePosition.y = event.clientY;
     }
 
     /**
@@ -190,22 +260,20 @@ export class WebGLManager {
      */
     onPointerUp() {
         this.isDragging = false;
+        this.canvasElement.style.cursor = 'grab';
     }
 
     /**
-     * Handle mouse wheel zoom event
+     * Handle mouse wheel event
      */
     onMouseWheel(event) {
-        event.preventDefault();
-
-        const zoomSensitivity = CAMERA_CONFIG.ZOOM_SENSITIVITY;
-        this.cameraRadius += event.deltaY * zoomSensitivity;
-        this.cameraRadius = Math.max(
-            CAMERA_CONFIG.MIN_Z,
-            Math.min(CAMERA_CONFIG.MAX_Z, this.cameraRadius)
+        const delta = -Math.sign(event.deltaY) * CAMERA_CONFIG.ZOOM_SPEED;
+        this.cameraDistance = THREE.MathUtils.clamp(
+            this.cameraDistance + delta,
+            CAMERA_CONFIG.MIN_DISTANCE,
+            CAMERA_CONFIG.MAX_DISTANCE
         );
-
-        this.updateCameraPosition();
+        event.preventDefault();
     }
 
     /**
@@ -213,88 +281,93 @@ export class WebGLManager {
      */
     handleContextLost(event) {
         event.preventDefault();
-        this.isContextLost = true;
-        this.debug.track('WebGL', 'Context lost');
-
-        // Save current state
-        this.savedState = {
-            cameraPosition: this.camera?.position.clone(),
-            cameraRotation: this.camera?.rotation.clone(),
-            cameraRadius: this.cameraRadius,
-            cameraPhi: this.cameraPhi,
-            cameraTheta: this.cameraTheta
-        };
-
-        // Notify UI
-        this.ui.showError('Graphics context lost. Please wait...');
+        this.isActive = false;
+        this.debug.track('WebGL', 'Context Lost');
     }
 
     /**
      * Handle WebGL context restoration
      */
     async handleContextRestored() {
-        this.debug.track('WebGL', 'Context restored');
-        try {
-            await this.init();
-            
-            // Restore saved state if available
-            if (this.savedState) {
-                Object.assign(this, this.savedState);
-                this.updateCameraPosition();
-                this.savedState = null;
-            }
-
-            this.isContextLost = false;
-            this.ui.showMessage('Graphics restored successfully.');
-        } catch (error) {
-            this.debug.track('WebGL Error', error.message);
-            this.ui.showError('Failed to restore graphics context.');
-            throw error;
-        }
+        await this.init();
+        this.debug.track('WebGL', 'Context Restored');
     }
 
     /**
-     * Clean up WebGL resources
+     * Clean up resources
      */
     dispose() {
-        if (this.renderer) {
-            this.renderer.dispose();
-            this.renderer.forceContextLoss();
-            this.renderer = null;
-        }
+        // Remove event listeners
+        this.resizeObserver?.disconnect();
+        this.canvasElement?.removeEventListener('pointerdown', this.onPointerDown);
+        window.removeEventListener('pointermove', this.onPointerMove);
+        window.removeEventListener('pointerup', this.onPointerUp);
+        this.canvasElement?.removeEventListener('wheel', this.onMouseWheel);
 
-        if (this.cubeWireframe) {
-            this.scene.remove(this.cubeWireframe);
-            this.cubeWireframe.geometry.dispose();
-            this.cubeWireframe.material.dispose();
-            this.cubeWireframe = null;
-        }
+        // Dispose of scene objects
+        this.cubeWireframe?.geometry.dispose();
+        this.cubeWireframe?.material.dispose();
+        this.blackholeMesh?.geometry.dispose();
+        this.blackholeMesh?.material.dispose();
 
-        if (this.scene) {
-            this.scene.clear();
-            this.scene = null;
-        }
+        // Dispose of renderer
+        this.renderer?.dispose();
 
+        // Clear references
+        this.scene = null;
         this.camera = null;
+        this.renderer = null;
+        this.cubeWireframe = null;
+        this.blackholeMesh = null;
+        this.blackholeUniforms = null;
+        this.canvasElement = null;
+        this.isActive = false;
+
         this.debug.track('WebGL', 'Disposed');
-
-        // Remove window resize listener
-        window.removeEventListener('resize', this.handleResize);
     }
 
     /**
-     * Get renderer context status
+     * Public methods for scene management
      */
+    addMesh(mesh) {
+        this.scene.add(mesh);
+    }
+
+    removeMesh(mesh) {
+        this.scene.remove(mesh);
+    }
+
+    setBlackholeVisibility(visible) {
+        if (this.blackholeMesh) {
+            this.blackholeMesh.visible = visible;
+        }
+    }
+
+    updateBlackholeUniforms(time) {
+        if (this.blackholeUniforms) {
+            this.blackholeUniforms.time.value = time;
+            this.blackholeUniforms.resolution.value.set(
+                this.canvasElement.width,
+                this.canvasElement.height
+            );
+        }
+    }
+
     isContextActive() {
-        return this.renderer && !this.isContextLost;
+        return this.isActive;
     }
 
     /**
-     * Render a frame
+     * Render the scene
      */
     render() {
-        if (this.isContextActive()) {
-            this.renderer.render(this.scene, this.camera);
-        }
+        if (!this.isActive) return;
+        
+        // Smooth camera rotation
+        this.currentRotation.x += (this.targetRotation.x - this.currentRotation.x) * 0.1;
+        this.currentRotation.y += (this.targetRotation.y - this.currentRotation.y) * 0.1;
+        
+        this.updateCameraPosition();
+        this.renderer.render(this.scene, this.camera);
     }
 }

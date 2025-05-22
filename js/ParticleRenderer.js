@@ -1,49 +1,51 @@
-import { PARTICLE_CONFIG, ANIMATION_CONFIG, PHYSICS_CONFIG } from './config.js';
+import { PARTICLE_CONFIG } from './config.js';
 
-// Debug logging helper
-const DEBUG = true;
-function debug(...args) {
-    if (DEBUG) console.log('[ParticleRenderer]', ...args);
-}
-
+/**
+ * Handles particle system rendering using instanced meshes
+ */
 export class ParticleRenderer {
     constructor(scene, particleCount) {
         this.scene = scene;
-        this.particleCount = particleCount;
+        this.particleCount = Math.min(particleCount, PARTICLE_CONFIG.MAX_COUNT);
+        
+        // Core rendering components
+        this.instancedMesh = null;
+        this.material = null;
+        this.dummy = new THREE.Object3D(); // For instance updates
+        
+        // Attribute arrays
+        this.positions = new Float32Array(this.particleCount * 3);
+        this.colors = new Float32Array(this.particleCount * 3);
+        this.scales = new Float32Array(this.particleCount);
+        
+        // Selection state
         this.selectedIndices = new Set();
-        this.phase = 0;
+        
+        // Phase state
+        this.currentPhase = 0;
         this.phaseProgress = 0;
         this.phaseStartTime = 0;
-        this.currentDuration = 0;
-        this.targetPositions = new Map();
-        debug('Initializing with', particleCount, 'particles');
-        this.initShaders();
+        this.phaseDuration = 0;
     }
 
+    /**
+     * Initialize particle system with shaders
+     */
     async initShaders() {
         try {
-            debug('Loading shaders...');
-            const [vertexResponse, fragmentResponse] = await Promise.all([
-                fetch('js/shaders/particle.vert'),
-                fetch('js/shaders/particle.frag')
+            // Load shader files
+            const [vertexShader, fragmentShader] = await Promise.all([
+                fetch('js/shaders/particle.vert').then(r => r.text()),
+                fetch('js/shaders/particle.frag').then(r => r.text())
             ]);
 
-            if (!vertexResponse.ok || !fragmentResponse.ok) {
-                throw new Error('Failed to load shaders');
-            }
-
-            const vertexShader = await vertexResponse.text();
-            const fragmentShader = await fragmentResponse.text();
-            debug('Shaders loaded successfully');
-
-            // Update uniforms with phase information
+            // Create shader material
             this.material = new THREE.ShaderMaterial({
                 uniforms: {
                     time: { value: 0 },
-                    center: { value: new THREE.Vector3(0, 0, 0) },
                     phase: { value: 0 },
                     phaseProgress: { value: 0 },
-                    targetPosition: { value: new THREE.Vector3() }
+                    center: { value: new THREE.Vector3(0, 0, 0) }
                 },
                 vertexShader,
                 fragmentShader,
@@ -52,112 +54,187 @@ export class ParticleRenderer {
                 blending: THREE.AdditiveBlending
             });
 
-            // Create geometry with particle indices
-            const geometry = new THREE.BufferGeometry();
-            const positions = new Float32Array(this.particleCount * 3);
-            const indices = new Float32Array(this.particleCount);
-
-            for (let i = 0; i < this.particleCount; i++) {
-                indices[i] = 0; // 0 for non-selected, 1 for selected
-            }
-
-            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-            geometry.setAttribute('particleIndex', new THREE.BufferAttribute(indices, 1));
-
-            // Create points system
-            this.particles = new THREE.Points(geometry, this.material);
-            this.scene.add(this.particles);
-            debug('Particle system initialized');
-
+            // Create base geometry for particles
+            const geometry = new THREE.SphereGeometry(PARTICLE_CONFIG.RADIUS, 8, 8);
+            
+            // Create instanced mesh
+            this.instancedMesh = new THREE.InstancedMesh(
+                geometry,
+                this.material,
+                this.particleCount
+            );
+            
+            // Initialize instance attributes
+            this.initializeInstances();
+            
+            // Add to scene
+            this.scene.add(this.instancedMesh);
+            
+            return true;
         } catch (error) {
-            console.error('Shader initialization error:', error);
+            console.error('Failed to initialize shaders:', error);
             throw error;
         }
     }
 
-    setPhase(newPhase, duration) {
-        debug('Setting phase:', newPhase, 'duration:', duration);
-        this.phase = newPhase;
+    /**
+     * Initialize instance attributes
+     */
+    initializeInstances() {
+        const color = new THREE.Color();
+        const boxSize = PARTICLE_CONFIG.RADIUS * 2;
+        
+        for (let i = 0; i < this.particleCount; i++) {
+            // Random position within box
+            this.dummy.position.set(
+                (Math.random() - 0.5) * boxSize,
+                (Math.random() - 0.5) * boxSize,
+                (Math.random() - 0.5) * boxSize
+            );
+            
+            // Random scale
+            const scale = 0.8 + Math.random() * 0.4;
+            this.dummy.scale.set(scale, scale, scale);
+            
+            // Update matrix
+            this.dummy.updateMatrix();
+            this.instancedMesh.setMatrixAt(i, this.dummy.matrix);
+            
+            // Set initial color
+            color.setHSL(
+                PARTICLE_CONFIG.COLOR.HUE / 360,
+                PARTICLE_CONFIG.COLOR.SATURATION / 100,
+                PARTICLE_CONFIG.COLOR.LIGHTNESS / 100
+            );
+            this.instancedMesh.setColorAt(i, color);
+        }
+        
+        this.instancedMesh.instanceMatrix.needsUpdate = true;
+        this.instancedMesh.instanceColor.needsUpdate = true;
+    }
+
+    /**
+     * Update particle positions from physics simulation
+     */
+    updatePositions(positions) {
+        if (!this.instancedMesh) return;
+
+        for (let i = 0; i < this.particleCount; i++) {
+            this.dummy.position.set(
+                positions[i * 3],
+                positions[i * 3 + 1],
+                positions[i * 3 + 2]
+            );
+            
+            // Scale selected particles slightly larger
+            const scale = this.selectedIndices.has(i) ? 1.5 : 1.0;
+            this.dummy.scale.set(scale, scale, scale);
+            
+            this.dummy.updateMatrix();
+            this.instancedMesh.setMatrixAt(i, this.dummy.matrix);
+        }
+
+        this.instancedMesh.instanceMatrix.needsUpdate = true;
+    }
+
+    /**
+     * Update selected particles
+     */
+    updateSelection(selectedIndices) {
+        if (!this.instancedMesh) return;
+
+        this.selectedIndices = new Set(selectedIndices);
+        const color = new THREE.Color();
+        
+        for (let i = 0; i < this.particleCount; i++) {
+            const isSelected = this.selectedIndices.has(i);
+            
+            // Set color based on selection
+            if (isSelected) {
+                color.setHSL(0.15, 1.0, 0.7); // Gold color for selected
+            } else {
+                color.setHSL(
+                    PARTICLE_CONFIG.COLOR.HUE / 360,
+                    PARTICLE_CONFIG.COLOR.SATURATION / 100,
+                    PARTICLE_CONFIG.COLOR.LIGHTNESS / 100
+                );
+            }
+            
+            this.instancedMesh.setColorAt(i, color);
+        }
+        
+        this.instancedMesh.instanceColor.needsUpdate = true;
+    }
+
+    /**
+     * Set current animation phase
+     */
+    setPhase(phase, duration) {
+        this.currentPhase = phase;
         this.phaseStartTime = performance.now();
-        this.currentDuration = duration;
-        this.material.uniforms.phase.value = newPhase;
+        this.phaseDuration = duration;
+        
+        if (this.material) {
+            this.material.uniforms.phase.value = phase;
+        }
     }
 
-    setTargetPosition(index, position) {
-        this.targetPositions.set(index, position);
-    }
-
-    update(time) {
+    /**
+     * Update time uniforms
+     */
+    updateTime(time) {
         if (!this.material) return;
 
-        // Update time uniform
-        this.material.uniforms.time.value = time * 0.001;
-
-        // Update phase progress
-        if (this.currentDuration > 0) {
-            const elapsed = time - this.phaseStartTime;
-            this.phaseProgress = Math.min(1, elapsed / this.currentDuration);
-            this.material.uniforms.phaseProgress.value = this.phaseProgress;
-
-            if (this.phaseProgress >= 1) {
-                debug('Phase complete:', this.phase);
-            }
-        }
-
-        // Debug frame rate occasionally
-        if (time % 1000 < 16) { // Log every second
-            debug('FPS:', Math.round(1000 / (time - this.lastTime || time)));
-        }
-        this.lastTime = time;
-
-        // Update target positions for selected particles
-        if (this.selectedIndices.size > 0 && this.phase >= 3) {
-            for (const [index, position] of this.targetPositions) {
-                if (this.selectedIndices.has(index)) {
-                    this.material.uniforms.targetPosition.value.copy(position);
-                    break; // Only need one position for now
-                }
-            }
-        }
-    }
-
-    updatePositions(positions) {
-        if (!this.particles) return;
+        this.material.uniforms.time.value = time;
         
-        const positionAttribute = this.particles.geometry.attributes.position;
-        positionAttribute.array.set(positions);
-        positionAttribute.needsUpdate = true;
-    }
-
-    updateSelection(selectedIndices) {
-        if (!this.particles) return;
-
-        const indexAttribute = this.particles.geometry.attributes.particleIndex;
-        const indices = indexAttribute.array;
-
-        // Reset all indices to 0 (non-selected)
-        indices.fill(0);
-
-        // Set selected particles to 1
-        for (const index of selectedIndices) {
-            indices[index] = 1;
+        if (this.phaseDuration > 0) {
+            const progress = Math.min(1, (performance.now() - this.phaseStartTime) / this.phaseDuration);
+            this.material.uniforms.phaseProgress.value = progress;
         }
-
-        indexAttribute.needsUpdate = true;
     }
 
-    updateTime(time) {
+    /**
+     * Reset particle system
+     */
+    resetParticles() {
+        if (!this.instancedMesh) return;
+
+        // Reset phase state
+        this.currentPhase = 0;
+        this.phaseProgress = 0;
+        this.phaseStartTime = 0;
+        this.phaseDuration = 0;
+        
+        // Reset selection state
+        this.selectedIndices.clear();
+        
+        // Reinitialize instances
+        this.initializeInstances();
+        
+        // Reset uniforms
         if (this.material) {
-            this.material.uniforms.time.value = time;
+            this.material.uniforms.phase.value = 0;
+            this.material.uniforms.phaseProgress.value = 0;
+            this.material.uniforms.time.value = 0;
         }
     }
 
+    /**
+     * Clean up resources
+     */
     dispose() {
-        if (this.particles) {
-            this.scene.remove(this.particles);
-            this.particles.geometry.dispose();
-            this.particles.material.dispose();
-            this.particles = null;
+        if (this.instancedMesh) {
+            this.scene.remove(this.instancedMesh);
+            this.instancedMesh.geometry.dispose();
+            this.instancedMesh.material.dispose();
+            this.instancedMesh = null;
         }
+    }
+
+    /**
+     * Get particle count
+     */
+    getParticleCount() {
+        return this.particleCount;
     }
 }

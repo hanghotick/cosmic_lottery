@@ -365,23 +365,15 @@
         // Initialize core managers
         const debug = new Debug();
         const i18n = new LanguageManager();
-        const ui = new UIController(debug);
-
-        // Module state variables
+        const ui = new UIController(debug);        // Module state variables
         let simulationController = null;
         let particleRenderer = null;
         let webglManager = null;
         let animationFrameId = null;
         let lastFrameTime = 0;
         let textureCache = new Map();
-        let activeTimers = new Set();        // Animation and simulation state
-        const SimulationState = Object.freeze(ANIMATION_CONFIG.PHASES);
-        let simulationState = SimulationState.FLOATING;
-        window.simulationStarted = false;
-        window.luckyParticleSelected = false;
-        let selectedParticleIndices = new Set();
-
-        // Cleanup function for resources
+        let activeTimers = new Set();
+        const SimulationState = Object.freeze(ANIMATION_CONFIG.PHASES);        // Cleanup function for resources
         function cleanup() {
             // Cancel animation frame
             if (animationFrameId !== null) {
@@ -411,72 +403,36 @@
             if (webglManager) {
                 webglManager.dispose();
                 webglManager = null;
-                window.webglManager = null;
             }
 
             // Clean up event listeners
             window.removeEventListener('unload', cleanup);
 
-            // Reset state
-            window.luckyParticleSelected = false;
-            window.simulationStarted = false;
-            simulationState = SimulationState.FLOATING;
-            selectedParticleIndices.clear();
+            // Clear caches
             textureCache.clear();
         }
 
         // --- Particle and Scene Management ---
-function initParticles() {
-    // Properly dispose of previous Three.js objects
-    if (window.instancedParticles) {
-        window.webglManager.scene.remove(window.instancedParticles);
-        window.instancedParticles.geometry.dispose();
-        window.instancedParticles.material.dispose();
-        window.instancedParticles = null;
-    }
-    if (window.selectedParticleMeshes && Array.isArray(window.selectedParticleMeshes)) {
-        for (const mesh of window.selectedParticleMeshes) {
-            window.webglManager.scene.remove(mesh);
-            mesh.geometry.dispose();
-            mesh.material.dispose();
+    function initParticles() {
+        // Reset existing simulation if any
+        if (simulationController) {
+            simulationController.resetSimulation();
         }
-        window.selectedParticleMeshes = [];
     }
-    if (window.cubeWireframe) {
-        window.webglManager.scene.remove(window.cubeWireframe);
-        window.cubeWireframe.geometry.dispose();
-        window.cubeWireframe.material.dispose();
-        window.cubeWireframe = null;
-    }
-    // ...existing code for creating new particles, meshes, and wireframe...
-}
 
-function restartSimulation() {
-    // Properly dispose of all Three.js objects before re-initialization
-    if (window.instancedParticles) {
-        window.webglManager.scene.remove(window.instancedParticles);
-        window.instancedParticles.geometry.dispose();
-        window.instancedParticles.material.dispose();
-        window.instancedParticles = null;
-    }
-    if (window.selectedParticleMeshes && Array.isArray(window.selectedParticleMeshes)) {
-        for (const mesh of window.selectedParticleMeshes) {
-            window.webglManager.scene.remove(mesh);
-            mesh.geometry.dispose();
-            mesh.material.dispose();
+    function restartSimulation() {
+        if (simulationController) {
+            simulationController.resetSimulation();
         }
-        window.selectedParticleMeshes = [];
+        if (particleRenderer) {
+            particleRenderer.resetParticles();
+        }
+        if (webglManager) {
+            webglManager.createWireframeCube();
+        }
     }
-    if (window.cubeWireframe) {
-        window.webglManager.scene.remove(window.cubeWireframe);
-        window.cubeWireframe.geometry.dispose();
-        window.cubeWireframe.material.dispose();
-        window.cubeWireframe = null;
-    }
-    // ...existing code for resetting simulation state and re-initializing particles...
-}
 
-// Animation loop
+        // Animation loop
         function animate(timestamp) {
             // Request next frame first to ensure smooth animation
             animationFrameId = requestAnimationFrame(animate);
@@ -489,8 +445,10 @@ function restartSimulation() {
                 
                 // Update simulation state
                 if (simulationController) {
-                    debug.track('Phase', simulationController.currentPhase);
-                    debug.track('Selected Particles', simulationController.selectedIndices.size);
+                    const simPhase = simulationController.currentPhase;
+                    const selectedCount = simulationController.selectedIndices.size;
+                    debug.track('Phase', simPhase);
+                    debug.track('Selected Particles', selectedCount);
                     simulationController.update(timestamp);
                 }
                 
@@ -519,9 +477,7 @@ function restartSimulation() {
                 await i18n.init(ui.elements.languageSelect.value);
                 
                 // Initialize UI components
-                ui.createProgressElements();
-                
-                // Initialize WebGL manager
+                ui.createProgressElements();                // Initialize WebGL manager
                 webglManager = new WebGLManager(debug, ui);
                 await webglManager.init();
 
@@ -532,9 +488,9 @@ function restartSimulation() {
                 // Initialize simulation controller
                 simulationController = new SimulationController(debug, particleRenderer);
                 simulationController.initializeWorker();
-                
-                // Store webgl manager globally for compatibility
-                window.webglManager = webglManager;
+
+                // Set up UI controller with references
+                ui.setControllers(simulationController, webglManager);
 
                 // Start animation
                 animate();

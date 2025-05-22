@@ -1,5 +1,6 @@
 // UIController.js - Manages UI state and updates
 import { i18n } from './i18n/LanguageManager.js';
+import { ANIMATION_CONFIG } from './config.js';
 
 /**
  * Manages the game's UI elements and user interactions
@@ -21,13 +22,27 @@ export class UIController {
             messageBoxOkButton: document.getElementById('messageBoxOkButton'),
             messageBoxNewGameButton: document.getElementById('messageBoxNewGameButton'),
             loadingOverlay: document.getElementById('loadingOverlay'),
-            progressBar: null,
-            progressLabel: null
+            debugOverlay: document.getElementById('debugOverlay'),
+            sidebarToggleButton: document.getElementById('sidebarToggleButton'),
+            sidebar: document.getElementById('sidebar'),
+            phaseProgress: null,
+            phaseLabel: null
         };
 
+        this.simulationController = null;
+        this.webglManager = null;
+        
+        // Create phase progress elements
+        this.createProgressElements();
+
         // Bind event handlers
-        this.messageBoxOkButton.onclick = () => this.hideMessageBox();
+        this.bindEvents();
         this.debug.track('UI', 'Initialized');
+    }
+
+    setControllers(simulationController, webglManager) {
+        this.simulationController = simulationController;
+        this.webglManager = webglManager;
     }
 
     /**
@@ -81,87 +96,203 @@ export class UIController {
      * Create progress elements
      */
     createProgressElements() {
-        // Create progress bar container
-        const container = document.createElement('div');
-        container.className = 'progress-container';
-        container.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);';
+        // Create phase progress bar
+        const progressBar = document.createElement('div');
+        progressBar.className = 'phase-progress';
+        progressBar.innerHTML = '<div class="phase-progress-bar"></div>';
+        document.body.appendChild(progressBar);
+        this.elements.phaseProgress = progressBar;
 
-        // Create progress bar
-        this.elements.progressBar = document.createElement('div');
-        this.elements.progressBar.className = 'progress-bar';
-        this.elements.progressBar.style.cssText = 'width:300px;height:10px;background:#1a1a1a;border-radius:5px;overflow:hidden;';
-
-        // Create progress fill
-        const progressFill = document.createElement('div');
-        progressFill.className = 'progress-fill';
-        progressFill.style.cssText = 'width:0%;height:100%;background:linear-gradient(90deg,#4f46e5,#818cf8);transition:width 0.3s ease;';
-        
-        // Create label
-        this.elements.progressLabel = document.createElement('div');
-        this.elements.progressLabel.className = 'progress-label';
-        this.elements.progressLabel.style.cssText = 'color:#fff;text-align:center;margin-top:5px;font-size:14px;';
-        
-        // Assemble elements
-        this.elements.progressBar.appendChild(progressFill);
-        container.appendChild(this.elements.progressBar);
-        container.appendChild(this.elements.progressLabel);
-        document.body.appendChild(container);
-        
-        // Initially hidden
-        container.style.display = 'none';
+        // Create phase label
+        const phaseLabel = document.createElement('div');
+        phaseLabel.className = 'phase-label';
+        document.body.appendChild(phaseLabel);
+        this.elements.phaseLabel = phaseLabel;
     }
 
     /**
-     * Update progress display
-     * @param {string} phase - Current phase name
-     * @param {number} progress - Progress value (0-1)
+     * Bind event listeners
+     */
+    bindEvents() {
+        // Button events
+        this.elements.startButton.addEventListener('click', () => this.handleStartClick());
+        this.elements.restartButton.addEventListener('click', () => this.handleRestartClick());
+        this.elements.messageBoxOkButton.addEventListener('click', () => this.hideMessageBox());
+        this.elements.messageBoxNewGameButton.addEventListener('click', () => this.handleNewGameClick());
+        this.elements.sidebarToggleButton.addEventListener('click', () => this.toggleSidebar());
+
+        // Input validation
+        this.elements.maxNumberInput.addEventListener('input', (e) => this.validateNumberInput(e.target));
+        this.elements.numLuckyNumbersInput.addEventListener('input', (e) => this.validateNumberInput(e.target));
+        
+        // Language selection
+        this.elements.languageSelect.addEventListener('change', (e) => this.handleLanguageChange(e));
+
+        // Camera zoom
+        this.elements.zoomSlider.addEventListener('input', (e) => this.handleZoomChange(e));
+    }
+
+    /**
+     * Handle start button click
+     */
+    handleStartClick() {
+        if (!this.simulationController) return;
+
+        const maxNumber = parseInt(this.elements.maxNumberInput.value);
+        const numLuckyNumbers = parseInt(this.elements.numLuckyNumbersInput.value);
+
+        if (this.validateInputs(maxNumber, numLuckyNumbers)) {
+            this.updateButtonStates(true);
+            this.showLoading(true);
+            this.simulationController.startSimulation(maxNumber, numLuckyNumbers);
+        }
+    }
+
+    /**
+     * Handle restart button click
+     */
+    handleRestartClick() {
+        if (!this.simulationController) return;
+
+        this.updateButtonStates(false);
+        this.simulationController.resetSimulation();
+        this.updateProgress(ANIMATION_CONFIG.PHASES.FLOATING, 0);
+    }
+
+    /**
+     * Handle new game button click
+     */
+    handleNewGameClick() {
+        this.hideMessageBox();
+        this.handleRestartClick();
+    }
+
+    /**
+     * Handle language change
+     */
+    handleLanguageChange(event) {
+        this.i18n.setLanguage(event.target.value);
+    }
+
+    /**
+     * Handle zoom slider change
+     */
+    handleZoomChange(event) {
+        if (this.webglManager) {
+            this.webglManager.updateCameraDistance(parseFloat(event.target.value));
+        }
+    }
+
+    /**
+     * Validate number inputs
+     */
+    validateNumberInput(input) {
+        const value = parseInt(input.value);
+        const min = parseInt(input.min);
+        const max = parseInt(input.max);
+        
+        if (isNaN(value) || value < min || value > max) {
+            input.classList.add('invalid');
+            return false;
+        }
+        
+        input.classList.remove('invalid');
+        return true;
+    }
+
+    /**
+     * Validate all inputs
+     */
+    validateInputs(maxNumber, numLuckyNumbers) {
+        if (isNaN(maxNumber) || maxNumber < 10 || maxNumber > 10000) {
+            this.showError(this.i18n.t('errors.invalidMaxNumber'));
+            return false;
+        }
+
+        if (isNaN(numLuckyNumbers) || numLuckyNumbers < 1 || numLuckyNumbers > 100) {
+            this.showError(this.i18n.t('errors.invalidLuckyNumbers'));
+            return false;
+        }
+
+        if (numLuckyNumbers > maxNumber) {
+            this.showError(this.i18n.t('errors.tooManyLuckyNumbers'));
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Show error message
+     */
+    showError(message) {
+        this.elements.messageText.textContent = message;
+        this.elements.messageBoxNewGameButton.style.display = 'none';
+        this.elements.messageBoxOkButton.style.display = 'block';
+        this.elements.messageBox.classList.add('show');
+    }
+
+    /**
+     * Show success message
+     */
+    showSuccess(message, showNewGame = false) {
+        this.elements.messageText.textContent = message;
+        this.elements.messageBoxNewGameButton.style.display = showNewGame ? 'block' : 'none';
+        this.elements.messageBoxOkButton.style.display = showNewGame ? 'none' : 'block';
+        this.elements.messageBox.classList.add('show');
+    }
+
+    /**
+     * Hide message box
+     */
+    hideMessageBox() {
+        this.elements.messageBox.classList.remove('show');
+    }
+
+    /**
+     * Show/hide loading overlay
+     */
+    showLoading(show) {
+        this.elements.loadingOverlay.style.display = show ? 'flex' : 'none';
+    }
+
+    /**
+     * Update button states
+     */
+    updateButtonStates(simulationStarted) {
+        this.elements.startButton.disabled = simulationStarted;
+        this.elements.restartButton.disabled = !simulationStarted;
+        this.elements.maxNumberInput.disabled = simulationStarted;
+        this.elements.numLuckyNumbersInput.disabled = simulationStarted;
+    }
+
+    /**
+     * Update progress indicators
      */
     updateProgress(phase, progress) {
-        if (!this.elements.progressBar || !this.elements.progressLabel) return;
+        // Update progress bar
+        if (this.elements.phaseProgress) {
+            const bar = this.elements.phaseProgress.querySelector('.phase-progress-bar');
+            if (bar) {
+                bar.style.width = `${progress * 100}%`;
+            }
+            this.elements.phaseProgress.classList.toggle('show', phase !== ANIMATION_CONFIG.PHASES.FLOATING);
+        }
 
-        const container = this.elements.progressBar.parentElement;
-        container.style.display = 'block';
-        
-        const fill = this.elements.progressBar.querySelector('.progress-fill');
-        fill.style.width = `${progress * 100}%`;
-        
-        this.elements.progressLabel.textContent = i18n.t(`progress.${phase}`, { 
-            progress: Math.round(progress * 100) 
-        });
-    }
-
-    /**
-     * Hide progress elements
-     */
-    hideProgress() {
-        if (!this.elements.progressBar) return;
-        this.elements.progressBar.parentElement.style.display = 'none';
-    }
-
-    /**
-     * Update button states based on simulation phase
-     * @param {string} phase - Current simulation phase
-     */
-    updateButtonStates(phase = 'initial') {
-        const startLabel = phase === 'initial' ? 'startButton' : 'startButtonDrawing';
-        this.elements.startButton.textContent = i18n.t(`buttons.${startLabel}`);
-        this.elements.restartButton.textContent = i18n.t('buttons.restart');
+        // Update phase label
+        if (this.elements.phaseLabel) {
+            this.elements.phaseLabel.textContent = this.i18n.t(`phases.${phase}`);
+            this.elements.phaseLabel.classList.toggle('show', phase !== ANIMATION_CONFIG.PHASES.FLOATING);
+        }
 
         // Update status text
-        this.elements.statusOutput.textContent = i18n.t(`status.${phase}`);
+        this.elements.statusOutput.textContent = this.i18n.t(`status.${phase}`);
     }
 
     /**
-     * Show loading overlay
+     * Toggle sidebar visibility
      */
-    showLoading() {
-        this.elements.loadingOverlay.style.display = 'flex';
-    }
-
-    /**
-     * Hide loading overlay
-     */
-    hideLoading() {
-        this.elements.loadingOverlay.style.display = 'none';
+    toggleSidebar() {
+        this.elements.sidebar.classList.toggle('open');
     }
 }

@@ -76,7 +76,8 @@
             margin: 0.5rem 0;
             font-size: 1rem;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: background 0.2s, box-shadow 0.2s;
+            box-shadow: 0 2px 8px rgba(140,7,211,0.08);
         }
         .action-button:hover, #startButton:hover, #restartButton:hover, #messageBoxOkButton:hover, #messageBoxNewGameButton:hover, .sidebar-toggle-button:hover {
             background: var(--button-hover-bg);
@@ -138,12 +139,18 @@
             box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
         }
 
-        /* Status output */
+        /* Status output with animation */
         #statusOutput {
             color: var(--primary-color);
             font-weight: bold;
             margin: 1rem 0;
             font-size: 1.1rem;
+            transition: color 0.3s, background 0.3s;
+            animation: statusFadeIn 0.7s cubic-bezier(0.4,0,0.2,1);
+        }
+        @keyframes statusFadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         /* Message box styling with animations */
@@ -418,7 +425,58 @@
             textureCache.clear();
         }
 
-        // Animation loop
+        // --- Particle and Scene Management ---
+function initParticles() {
+    // Properly dispose of previous Three.js objects
+    if (window.instancedParticles) {
+        window.webglManager.scene.remove(window.instancedParticles);
+        window.instancedParticles.geometry.dispose();
+        window.instancedParticles.material.dispose();
+        window.instancedParticles = null;
+    }
+    if (window.selectedParticleMeshes && Array.isArray(window.selectedParticleMeshes)) {
+        for (const mesh of window.selectedParticleMeshes) {
+            window.webglManager.scene.remove(mesh);
+            mesh.geometry.dispose();
+            mesh.material.dispose();
+        }
+        window.selectedParticleMeshes = [];
+    }
+    if (window.cubeWireframe) {
+        window.webglManager.scene.remove(window.cubeWireframe);
+        window.cubeWireframe.geometry.dispose();
+        window.cubeWireframe.material.dispose();
+        window.cubeWireframe = null;
+    }
+    // ...existing code for creating new particles, meshes, and wireframe...
+}
+
+function restartSimulation() {
+    // Properly dispose of all Three.js objects before re-initialization
+    if (window.instancedParticles) {
+        window.webglManager.scene.remove(window.instancedParticles);
+        window.instancedParticles.geometry.dispose();
+        window.instancedParticles.material.dispose();
+        window.instancedParticles = null;
+    }
+    if (window.selectedParticleMeshes && Array.isArray(window.selectedParticleMeshes)) {
+        for (const mesh of window.selectedParticleMeshes) {
+            window.webglManager.scene.remove(mesh);
+            mesh.geometry.dispose();
+            mesh.material.dispose();
+        }
+        window.selectedParticleMeshes = [];
+    }
+    if (window.cubeWireframe) {
+        window.webglManager.scene.remove(window.cubeWireframe);
+        window.cubeWireframe.geometry.dispose();
+        window.cubeWireframe.material.dispose();
+        window.cubeWireframe = null;
+    }
+    // ...existing code for resetting simulation state and re-initializing particles...
+}
+
+// Animation loop
         function animate(timestamp) {
             // Request next frame first to ensure smooth animation
             animationFrameId = requestAnimationFrame(animate);

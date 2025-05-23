@@ -211,18 +211,36 @@ export class SimulationController {
             // Update mesh visibility based on phase
             mesh.visible = this.shouldShowMeshInPhase(phase);
         }
-    }
-
-    /**
+    }    /**
      * Apply swirling effect to selected particle mesh
      */
     applySwirlingEffect(mesh, position, timestamp) {
+        // Calculate orbital movement
+        const orbitalSpeed = 0.001;
+        const orbitalRadius = 0.1;
+        const orbitalOffset = new THREE.Vector3(
+            Math.cos(timestamp * orbitalSpeed) * orbitalRadius,
+            Math.sin(timestamp * orbitalSpeed) * orbitalRadius,
+            0
+        );
+        
+        // Apply smooth swirling motion
         const swirlingFactor = Math.sin(timestamp * 0.001) * 0.2;
-        mesh.position.copy(position);
-        mesh.scale.setScalar(0.5 + swirlingFactor);
+        const rotationSpeed = timestamp * 0.002;
+        
+        mesh.position.copy(position).add(orbitalOffset);
+        mesh.rotation.z = rotationSpeed;
+        mesh.scale.setScalar(mesh.userData.initialScale.x * (1 + swirlingFactor));
         
         if (mesh.material) {
-            mesh.material.opacity = 0.7 + swirlingFactor;
+            // Pulse opacity with swirl
+            const opacityBase = 0.7;
+            const opacityPulse = Math.sin(timestamp * 0.003) * 0.3;
+            mesh.material.opacity = Math.max(0.3, opacityBase + opacityPulse + swirlingFactor);
+            
+            // Add color shift effect
+            const hue = (timestamp * 0.0001) % 1;
+            this.applyColorShift(mesh.material, hue);
         }
     }
 
@@ -230,14 +248,33 @@ export class SimulationController {
      * Apply blackhole effect to selected particle mesh
      */
     applyBlackholeEffect(mesh, position, timestamp) {
-        const distanceFromCenter = position.length();
-        const blackholeEffect = Math.max(0.2, 1 - (distanceFromCenter * 0.1));
+        // Calculate distance-based effects
+        const center = new THREE.Vector3(0, 0, 0);
+        const distanceFromCenter = position.distanceTo(center);
+        const maxDistance = 5; // Adjust based on your scene scale
         
-        mesh.position.copy(position);
-        mesh.scale.setScalar(0.5 * blackholeEffect);
+        // Calculate gravitational distortion
+        const distortionFactor = Math.max(0.2, 1 - (distanceFromCenter / maxDistance));
+        const spiralFactor = (timestamp * 0.001) + (distanceFromCenter * 0.5);
+        
+        // Apply spiral motion towards center
+        const spiralPosition = new THREE.Vector3(
+            position.x * Math.cos(spiralFactor) - position.y * Math.sin(spiralFactor),
+            position.x * Math.sin(spiralFactor) + position.y * Math.cos(spiralFactor),
+            position.z
+        ).multiplyScalar(distortionFactor);
+        
+        mesh.position.copy(spiralPosition);
+        mesh.rotation.z = spiralFactor * 2;
+        mesh.scale.setScalar(mesh.userData.initialScale.x * distortionFactor);
         
         if (mesh.material) {
-            mesh.material.opacity = blackholeEffect;
+            // Apply distance-based opacity
+            mesh.material.opacity = Math.max(0.1, distortionFactor);
+            
+            // Add gravitational color shift
+            const blueShift = Math.max(0, 1 - distortionFactor);
+            this.applyColorShift(mesh.material, 0.6 + (blueShift * 0.1));
         }
     }
 
@@ -245,13 +282,71 @@ export class SimulationController {
      * Apply selection effect to selected particle mesh
      */
     applySelectionEffect(mesh, position, timestamp) {
-        const pulseEffect = 0.2 * Math.sin(timestamp * 0.003) + 1;
-        mesh.position.copy(position);
-        mesh.scale.setScalar(0.5 * pulseEffect);
+        // Calculate pulsing effect
+        const pulseFreq = 0.003;
+        const pulseAmp = 0.2;
+        const pulseEffect = pulseAmp * Math.sin(timestamp * pulseFreq) + 1;
+        
+        // Calculate hovering motion
+        const hoverHeight = Math.sin(timestamp * 0.002) * 0.1;
+        const hoverPosition = position.clone().add(new THREE.Vector3(0, 0, hoverHeight));
+        
+        // Apply combined effects
+        mesh.position.copy(hoverPosition);
+        mesh.rotation.z = Math.sin(timestamp * 0.001) * 0.1;
+        mesh.scale.setScalar(mesh.userData.initialScale.x * pulseEffect);
         
         if (mesh.material) {
-            mesh.material.opacity = 1;
+            // Apply glowing effect
+            const glowIntensity = 0.8 + (pulseEffect - 1) * 2;
+            mesh.material.opacity = Math.min(1, glowIntensity);
+            
+            // Add subtle color cycling
+            const hue = (timestamp * 0.0001 + mesh.userData.number * 0.1) % 1;
+            this.applyColorShift(mesh.material, hue);
         }
+    }
+
+    /**
+     * Apply color shift effect to material
+     */
+    applyColorShift(material, hue) {
+        if (!material.userData.originalColor) {
+            material.userData.originalColor = material.color.clone();
+        }
+
+        // Convert HSL to RGB
+        const rgb = this.hslToRgb(hue, 0.3, 0.8);
+        material.color.setRGB(rgb.r, rgb.g, rgb.b);
+    }
+
+    /**
+     * Convert HSL color to RGB
+     */
+    hslToRgb(h, s, l) {
+        let r, g, b;
+
+        if (s === 0) {
+            r = g = b = l;
+        } else {
+            const hue2rgb = (p, q, t) => {
+                if (t < 0) t += 1;
+                if (t > 1) t -= 1;
+                if (t < 1/6) return p + (q - p) * 6 * t;
+                if (t < 1/2) return q;
+                if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                return p;
+            };
+
+            const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+            const p = 2 * l - q;
+
+            r = hue2rgb(p, q, h + 1/3);
+            g = hue2rgb(p, q, h);
+            b = hue2rgb(p, q, h - 1/3);
+        }
+
+        return { r, g, b };
     }
 
     /**
@@ -267,17 +362,113 @@ export class SimulationController {
             default:
                 return true;
         }
+    }    /**
+     * Handle phase change with transition management
+     */
+    handlePhaseChange(newPhase) {
+        // Track current transition state
+        const transitionState = {
+            fromPhase: this.currentPhase,
+            toPhase: newPhase,
+            startTime: performance.now(),
+            inProgress: true
+        };
+
+        // Validate and prepare for phase change
+        if (!this.preparePhaseTransition(transitionState)) {
+            return;
+        }
+
+        try {
+            // Apply the phase change
+            this.setPhase(newPhase);
+
+            // Handle special phase requirements
+            if (newPhase === ANIMATION_CONFIG.PHASES.SELECTION && !this.luckyParticleSelected) {
+                this.startLuckyDraw(this.luckyParticleCount);
+            }
+
+            // Track successful transition
+            this.debug.track('Phase Transition', {
+                from: transitionState.fromPhase,
+                to: newPhase,
+                duration: performance.now() - transitionState.startTime
+            });
+
+        } catch (error) {
+            // Handle transition failure
+            this.handleTransitionError(transitionState, error);
+        }
     }
 
     /**
-     * Handle phase change
+     * Prepare for phase transition
      */
-    handlePhaseChange(newPhase) {
-        this.setPhase(newPhase);
-        if (newPhase === ANIMATION_CONFIG.PHASES.SELECTION && !this.luckyParticleSelected) {
-            this.startLuckyDraw(this.luckyParticleCount);
+    preparePhaseTransition(transitionState) {
+        // Check if we're already transitioning
+        if (this.isTransitioning) {
+            this.debug.track('Transition Blocked', 'Already in transition');
+            return false;
         }
-    }    /**
+
+        // Validate the transition
+        if (!this.isValidPhaseTransition(transitionState.fromPhase, transitionState.toPhase)) {
+            this.debug.track('Invalid Transition', {
+                from: transitionState.fromPhase,
+                to: transitionState.toPhase
+            });
+            return false;
+        }
+
+        this.isTransitioning = true;
+        return true;
+    }
+
+    /**
+     * Handle transition errors
+     */
+    handleTransitionError(transitionState, error) {
+        this.debug.track('Transition Error', {
+            from: transitionState.fromPhase,
+            to: transitionState.toPhase,
+            error: error.message
+        });
+
+        // Attempt to restore previous state
+        try {
+            this.setPhase(transitionState.fromPhase);
+            this.debug.track('State Restored', `Reverted to ${transitionState.fromPhase}`);
+        } catch (restoreError) {
+            // If restore fails, try to reset to a safe state
+            this.debug.track('Restore Failed', restoreError.message);
+            this.resetToSafeState();
+        }
+    }
+
+    /**
+     * Reset to a safe state after error
+     */
+    resetToSafeState() {
+        // Attempt to reset to FLOATING phase
+        this.currentPhase = ANIMATION_CONFIG.PHASES.FLOATING;
+        this.phaseStartTime = performance.now();
+        this.cleanupTransitionState();
+        
+        // Reset any active effects
+        this.webglManager.setBlackholeVisibility(false);
+        this.particleRenderer.resetParticles();
+        
+        this.debug.track('Safe State', 'Reset to FLOATING phase');
+    }
+
+    /**
+     * Clean up after transition
+     */
+    cleanupTransitionState() {
+        this.isTransitioning = false;
+    }
+
+    /**
      * Update simulation state
      */
     async update(timestamp) {
@@ -816,12 +1007,18 @@ export class SimulationController {
         // Draw outer glow
         ctx.globalAlpha = 0.4;
         for (let i = 0; i < 8; i++) {
-            ctx.fillText(number.toString(), 64 + i, 64);
-            ctx.fillText(number.toString(), 64, 64 + i);
+            const angle = (i / 8) * Math.PI * 2;
+            const xOffset = Math.cos(angle) * 2;
+            const yOffset = Math.sin(angle) * 2;
+            ctx.shadowOffsetX = xOffset;
+            ctx.shadowOffsetY = yOffset;
+            ctx.fillText(number.toString(), 64 + xOffset, 64 + yOffset);
         }
         
         // Draw main number
         ctx.globalAlpha = 1.0;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
         ctx.fillText(number.toString(), 64, 64);
 
         // Create texture with proper settings
@@ -844,7 +1041,7 @@ export class SimulationController {
         // Create sprite with proper rendering settings
         const mesh = new THREE.Sprite(material);
         mesh.scale.set(0.5, 0.5, 1);
-        mesh.renderOrder = 1; // Ensure numbers render on top of particles
+        mesh.renderOrder = 1;        
         
         // Store initial properties for animations
         mesh.userData.initialScale = new THREE.Vector3(0.5, 0.5, 1);
@@ -852,5 +1049,162 @@ export class SimulationController {
         mesh.userData.number = number;
 
         return mesh;
+    }
+
+    /**
+     * Apply transition effects between phases
+     */
+    applyTransitionEffects(fromPhase, toPhase, progress) {
+        // Apply phase-specific transition effects to selected particles
+        for (const [index, mesh] of this.selectedParticleMeshes) {
+            const position = new THREE.Vector3(
+                this.particlePositions[index * 3],
+                this.particlePositions[index * 3 + 1],
+                this.particlePositions[index * 3 + 2]
+            );
+
+            switch(toPhase) {
+                case ANIMATION_CONFIG.PHASES.SWIRLING:
+                    this.applySwirlingTransition(mesh, position, progress);
+                    break;
+
+                case ANIMATION_CONFIG.PHASES.BLACKHOLE:
+                    this.applyBlackholeTransition(mesh, position, progress);
+                    break;
+
+                case ANIMATION_CONFIG.PHASES.SELECTION:
+                    this.applySelectionTransition(mesh, position, progress);
+                    break;
+
+                case ANIMATION_CONFIG.PHASES.LINING_UP:
+                    this.applyLineUpTransition(mesh, position, progress);
+                    break;
+            }
+        }
+    }
+
+    /**
+     * Apply swirling transition effect
+     */
+    applySwirlingTransition(mesh, position, progress) {
+        // Gradually increase swirl intensity
+        const swirlingIntensity = progress * 0.2;
+        const timestamp = performance.now();
+        
+        // Calculate orbital movement with increasing radius
+        const orbitalRadius = progress * 0.15;
+        const orbitalSpeed = 0.001 * (1 + progress);
+        const orbitalOffset = new THREE.Vector3(
+            Math.cos(timestamp * orbitalSpeed) * orbitalRadius,
+            Math.sin(timestamp * orbitalSpeed) * orbitalRadius,
+            0
+        );
+
+        // Apply position and rotation
+        mesh.position.copy(position).add(orbitalOffset);
+        mesh.rotation.z = timestamp * 0.002 * progress;
+        mesh.scale.setScalar(mesh.userData.initialScale.x * (1 + swirlingIntensity));
+
+        if (mesh.material) {
+            // Gradually increase glow effect
+            const opacity = 0.7 + (progress * 0.3);
+            mesh.material.opacity = opacity;
+
+            // Transition color
+            const hue = (timestamp * 0.0001 * progress) % 1;
+            this.applyColorShift(mesh.material, hue);
+        }
+    }
+
+    /**
+     * Apply blackhole transition effect
+     */
+    applyBlackholeTransition(mesh, position, progress) {
+        const center = new THREE.Vector3(0, 0, 0);
+        const distanceFromCenter = position.distanceTo(center);
+        
+        // Increase gravitational pull over time
+        const distortionFactor = Math.max(0.2, 1 - (distanceFromCenter / 5) * (1 - progress));
+        const spiralFactor = progress * Math.PI * 2;
+
+        // Calculate spiral motion
+        const angle = spiralFactor + (distanceFromCenter * 0.5);
+        const spiralPosition = new THREE.Vector3(
+            position.x * Math.cos(angle) - position.y * Math.sin(angle),
+            position.x * Math.sin(angle) + position.y * Math.cos(angle),
+            position.z
+        ).multiplyScalar(1 - (progress * 0.5));
+
+        // Apply transformations
+        mesh.position.copy(spiralPosition);
+        mesh.rotation.z = angle;
+        mesh.scale.setScalar(mesh.userData.initialScale.x * (1 - progress * 0.5));
+
+        if (mesh.material) {
+            // Fade out as particles approach the blackhole
+            mesh.material.opacity = Math.max(0.1, 1 - progress);
+            
+            // Shift color towards blue/purple
+            const blueShift = 0.6 + (progress * 0.1);
+            this.applyColorShift(mesh.material, blueShift);
+        }
+    }
+
+    /**
+     * Apply selection transition effect
+     */
+    applySelectionTransition(mesh, position, progress) {
+        // Calculate smooth hover effect
+        const hoverHeight = Math.sin(progress * Math.PI) * 0.1;
+        const targetPosition = position.clone().add(new THREE.Vector3(0, 0, hoverHeight));
+        
+        // Apply pulsing scale effect
+        const pulseScale = 1 + Math.sin(progress * Math.PI * 4) * 0.2;
+        
+        // Update mesh properties
+        mesh.position.copy(targetPosition);
+        mesh.rotation.z = progress * Math.PI * 2;
+        mesh.scale.setScalar(mesh.userData.initialScale.x * pulseScale);
+
+        if (mesh.material) {
+            // Increase glow intensity
+            const glowIntensity = 0.7 + (progress * 0.3);
+            mesh.material.opacity = glowIntensity;
+
+            // Transition to victory colors
+            const hue = 0.15 + (progress * 0.1); // Golden hue
+            this.applyColorShift(mesh.material, hue);
+        }
+    }
+
+    /**
+     * Apply line-up transition effect
+     */
+    applyLineUpTransition(mesh, position, progress) {
+        const index = mesh.userData.number - 1;
+        const targetPosition = this.targetPositions.get(index);
+        
+        if (!targetPosition) return;
+
+        // Smoothly interpolate to target position
+        const interpolatedPosition = position.clone().lerp(targetPosition, progress);
+        
+        // Add subtle floating motion
+        const floatOffset = Math.sin(performance.now() * 0.002 + index) * 0.05 * (1 - progress);
+        interpolatedPosition.y += floatOffset;
+
+        // Apply transformations
+        mesh.position.copy(interpolatedPosition);
+        mesh.rotation.z = Math.PI * 2 * progress;
+        mesh.scale.setScalar(mesh.userData.initialScale.x * (1 + Math.sin(progress * Math.PI) * 0.2));
+
+        if (mesh.material) {
+            // Maintain full visibility
+            mesh.material.opacity = 1.0;
+            
+            // Subtle color pulsing
+            const hue = 0.15 + Math.sin(performance.now() * 0.001 + index * 0.1) * 0.05;
+            this.applyColorShift(mesh.material, hue);
+        }
     }
 }

@@ -25,24 +25,63 @@ export class UIController {
             debugOverlay: document.getElementById('debugOverlay'),
             sidebarToggleButton: document.getElementById('sidebarToggleButton'),
             sidebar: document.getElementById('sidebar'),
+            languageSelect: document.getElementById('languageSelect'),
             phaseProgress: null,
             phaseLabel: null
         };
+
+        // Validate required elements
+        for (const [key, element] of Object.entries(this.elements)) {
+            if (element === null && !['phaseProgress', 'phaseLabel'].includes(key)) {
+                this.debug.track('UI Error', `Missing required element: ${key}`);
+                throw new Error(`Required UI element not found: ${key}`);
+            }
+        }
 
         this.simulationController = null;
         this.webglManager = null;
         
         // Create phase progress elements
-        this.createProgressElements();
-
-        // Bind event handlers
-        this.bindEvents();
-        this.debug.track('UI', 'Initialized');
+        try {
+            this.createProgressElements();
+            // Bind event handlers
+            this.bindEvents();
+            this.debug.track('UI', 'Initialized successfully');
+        } catch (error) {
+            this.debug.track('UI Error', `Initialization failed: ${error.message}`);
+            throw error;
+        }
     }
 
+    /**
+     * Set simulation and WebGL controller references
+     */
     setControllers(simulationController, webglManager) {
-        this.simulationController = simulationController;
-        this.webglManager = webglManager;
+        try {
+            // Store controller references
+            this.simulationController = simulationController;
+            this.webglManager = webglManager;
+
+            if (!this.simulationController || !this.webglManager) {
+                throw new Error('Missing required controllers');
+            }
+
+            // Verify WebGL support and initialization
+            if (!this.webglManager.isWebGLAvailable()) {
+                throw new Error('WebGL not available');
+            }
+
+            // Initialize graphics if not already done
+            this.webglManager.initializeGraphics().catch(error => {
+                this.debug.track('Graphics Error', error.message);
+                this.showError(this.i18n.t('errors.graphicsInitFailed'));
+            });
+
+            this.debug.track('UI', 'Controllers set successfully');
+        } catch (error) {
+            this.debug.track('UI Error', `Failed to set controllers: ${error.message}`);
+            throw error;
+        }
     }
 
     /**
@@ -114,22 +153,88 @@ export class UIController {
      * Bind event listeners
      */
     bindEvents() {
-        // Button events
-        this.elements.startButton.addEventListener('click', () => this.handleStartClick());
-        this.elements.restartButton.addEventListener('click', () => this.handleRestartClick());
-        this.elements.messageBoxOkButton.addEventListener('click', () => this.hideMessageBox());
-        this.elements.messageBoxNewGameButton.addEventListener('click', () => this.handleNewGameClick());
-        this.elements.sidebarToggleButton.addEventListener('click', () => this.toggleSidebar());
+        try {
+            // Button events with error handling
+            if (this.elements.startButton) {
+                this.elements.startButton.addEventListener('click', () => {
+                    try {
+                        this.handleStartClick();
+                    } catch (error) {
+                        this.debug.track('Start Error', error.message);
+                        this.showError(this.i18n.t('errors.startFailed'));
+                    }
+                });
+            }
+            
+            if (this.elements.restartButton) {
+                this.elements.restartButton.addEventListener('click', () => {
+                    try {
+                        this.handleRestartClick();
+                    } catch (error) {
+                        this.debug.track('Restart Error', error.message);
+                        this.showError(this.i18n.t('errors.restartFailed'));
+                    }
+                });
+            }
 
-        // Input validation
-        this.elements.maxNumberInput.addEventListener('input', (e) => this.validateNumberInput(e.target));
-        this.elements.numLuckyNumbersInput.addEventListener('input', (e) => this.validateNumberInput(e.target));
-        
-        // Language selection
-        this.elements.languageSelect.addEventListener('change', (e) => this.handleLanguageChange(e));
+            // Message box buttons
+            if (this.elements.messageBoxOkButton) {
+                this.elements.messageBoxOkButton.addEventListener('click', () => this.hideMessageBox());
+            }
+            
+            if (this.elements.messageBoxNewGameButton) {
+                this.elements.messageBoxNewGameButton.addEventListener('click', () => {
+                    try {
+                        this.handleNewGameClick();
+                    } catch (error) {
+                        this.debug.track('New Game Error', error.message);
+                        this.showError(this.i18n.t('errors.newGameFailed'));
+                    }
+                });
+            }
 
-        // Camera zoom
-        this.elements.zoomSlider.addEventListener('input', (e) => this.handleZoomChange(e));
+            // Sidebar toggle
+            if (this.elements.sidebarToggleButton) {
+                this.elements.sidebarToggleButton.addEventListener('click', () => this.toggleSidebar());
+            }
+
+            // Input validation
+            if (this.elements.maxNumberInput) {
+                this.elements.maxNumberInput.addEventListener('input', (e) => this.validateNumberInput(e.target));
+            }
+            
+            if (this.elements.numLuckyNumbersInput) {
+                this.elements.numLuckyNumbersInput.addEventListener('input', (e) => this.validateNumberInput(e.target));
+            }
+
+            // Language selection
+            if (this.elements.languageSelect) {
+                this.elements.languageSelect.addEventListener('change', (e) => {
+                    try {
+                        this.handleLanguageChange(e);
+                    } catch (error) {
+                        this.debug.track('Language Error', error.message);
+                        this.showError(this.i18n.t('errors.languageChangeFailed'));
+                    }
+                });
+            }
+
+            // Camera zoom
+            if (this.elements.zoomSlider) {
+                this.elements.zoomSlider.addEventListener('input', (e) => {
+                    try {
+                        this.handleZoomChange(e);
+                    } catch (error) {
+                        this.debug.track('Zoom Error', error.message);
+                    }
+                });
+            }
+
+            this.debug.track('UI', 'Events bound successfully');
+        } catch (error) {
+            this.debug.track('UI Error', `Failed to bind events: ${error.message}`);
+            throw error;
+        }
     }
 
     /**
@@ -260,10 +365,43 @@ export class UIController {
      * Update button states
      */
     updateButtonStates(simulationStarted) {
-        this.elements.startButton.disabled = simulationStarted;
-        this.elements.restartButton.disabled = !simulationStarted;
-        this.elements.maxNumberInput.disabled = simulationStarted;
-        this.elements.numLuckyNumbersInput.disabled = simulationStarted;
+        try {
+            if (this.elements.startButton) {
+                this.elements.startButton.disabled = simulationStarted;
+                this.elements.startButton.setAttribute('aria-disabled', simulationStarted);
+            }
+            
+            if (this.elements.restartButton) {
+                this.elements.restartButton.disabled = !simulationStarted;
+                this.elements.restartButton.setAttribute('aria-disabled', !simulationStarted);
+            }
+            
+            if (this.elements.maxNumberInput) {
+                this.elements.maxNumberInput.disabled = simulationStarted;
+                this.elements.maxNumberInput.setAttribute('aria-disabled', simulationStarted);
+            }
+            
+            if (this.elements.numLuckyNumbersInput) {
+                this.elements.numLuckyNumbersInput.disabled = simulationStarted;
+                this.elements.numLuckyNumbersInput.setAttribute('aria-disabled', simulationStarted);
+            }
+
+            // Update other UI elements based on simulation state
+            if (this.elements.zoomSlider) {
+                this.elements.zoomSlider.disabled = !simulationStarted;
+            }
+
+            // Update status message
+            if (this.elements.statusOutput) {
+                const status = simulationStarted ? 'running' : 'initial';
+                this.elements.statusOutput.textContent = this.i18n.t(`status.${status}`);
+            }
+
+            this.debug.track('UI', `Button states updated: ${simulationStarted ? 'running' : 'stopped'}`);
+        } catch (error) {
+            this.debug.track('UI Error', `Failed to update button states: ${error.message}`);
+            // Don't throw here as this is not critical
+        }
     }
 
     /**

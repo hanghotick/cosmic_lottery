@@ -33,46 +33,67 @@ export class ParticleRenderer {
      */
     async initShaders() {
         try {
-            // Load shader files
+            // Load shader files with timeout and error handling
+            const loadShader = async (path) => {
+                const response = await fetch(path);
+                if (!response.ok) {
+                    throw new Error(`Failed to load shader: ${path} (${response.status} ${response.statusText})`);
+                }
+                return response.text();
+            };
+
             const [vertexShader, fragmentShader] = await Promise.all([
-                fetch('js/shaders/particle.vert').then(r => r.text()),
-                fetch('js/shaders/particle.frag').then(r => r.text())
+                loadShader('js/shaders/particle.vert'),
+                loadShader('js/shaders/particle.frag')
             ]);
 
-            // Create shader material
-            this.material = new THREE.ShaderMaterial({
-                uniforms: {
-                    time: { value: 0 },
-                    phase: { value: 0 },
-                    phaseProgress: { value: 0 },
-                    center: { value: new THREE.Vector3(0, 0, 0) }
-                },
-                vertexShader,
-                fragmentShader,
-                transparent: true,
-                depthWrite: false,
-                blending: THREE.AdditiveBlending
-            });
+            // Validate shader content
+            if (!vertexShader || !fragmentShader) {
+                throw new Error('Shader content is empty');
+            }
+
+            // Create shader material with error catching
+            try {
+                this.material = new THREE.ShaderMaterial({
+                    uniforms: {
+                        time: { value: 0 },
+                        phase: { value: 0 },
+                        phaseProgress: { value: 0 },
+                        center: { value: new THREE.Vector3(0, 0, 0) }
+                    },
+                    vertexShader,
+                    fragmentShader,
+                    transparent: true,
+                    depthWrite: false,
+                    blending: THREE.AdditiveBlending
+                });
+            } catch (error) {
+                throw new Error(`Failed to create shader material: ${error.message}`);
+            }
 
             // Create base geometry for particles
-            const geometry = new THREE.SphereGeometry(PARTICLE_CONFIG.RADIUS, 8, 8);
-            
-            // Create instanced mesh
-            this.instancedMesh = new THREE.InstancedMesh(
-                geometry,
-                this.material,
-                this.particleCount
-            );
-            
-            // Initialize instance attributes
-            this.initializeInstances();
-            
-            // Add to scene
-            this.scene.add(this.instancedMesh);
-            
+            try {
+                const geometry = new THREE.SphereGeometry(PARTICLE_CONFIG.RADIUS, 8, 8);
+                
+                // Create instanced mesh
+                this.instancedMesh = new THREE.InstancedMesh(
+                    geometry,
+                    this.material,
+                    this.particleCount
+                );
+                
+                // Initialize instance attributes
+                this.initializeInstances();
+                
+                // Add to scene
+                this.scene.add(this.instancedMesh);
+            } catch (error) {
+                throw new Error(`Failed to create particle geometry: ${error.message}`);
+            }
+
             return true;
         } catch (error) {
-            console.error('Failed to initialize shaders:', error);
+            console.error('Shader initialization failed:', error);
             throw error;
         }
     }

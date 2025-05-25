@@ -472,44 +472,75 @@
                 
                 // Initialize debug manager
                 debug.init();
+                debug.track('Init', 'Starting initialization');
                 
                 // Initialize language manager
-                await i18n.init(ui.elements.languageSelect.value);
+                const userLang = ui.elements.languageSelect?.value || 'en';
+                await i18n.init(userLang);
+                debug.track('Language', `Initialized with ${userLang}`);
                 
-                // Initialize UI components
-                ui.createProgressElements();                // Initialize WebGL manager
-                webglManager = new WebGLManager(debug, ui);
-                await webglManager.init();
+                // Create UI elements
+                ui.createProgressElements();
 
-                // Initialize particle renderer with scene from WebGL manager
-                particleRenderer = new ParticleRenderer(webglManager.scene, parseInt(ui.elements.maxNumberInput.value));
-                await particleRenderer.initShaders();
+                // Show loading state
+                ui.showLoading(true);
+
+                // Initialize WebGL manager with validation
+                debug.track('WebGL', 'Initializing WebGL manager');
+                webglManager = new WebGLManager(debug, ui);
+                
+                try {
+                    await webglManager.init();
+                } catch (error) {
+                    debug.track('WebGL Error', error.message);
+                    ui.showError(i18n.t('errors.webglInitFailed'));
+                    return;
+                }
+
+                // Initialize particle renderer with proper defaults
+                const maxParticles = parseInt(ui.elements.maxNumberInput.value) || PARTICLE_CONFIG.MAX_COUNT;
+                debug.track('Particles', `Initializing renderer with ${maxParticles} particles`);
+                
+                try {
+                    particleRenderer = new ParticleRenderer(webglManager.scene, maxParticles);
+                    await particleRenderer.initShaders();
+                } catch (error) {
+                    debug.track('Particle Error', error.message);
+                    ui.showError(i18n.t('errors.particleInitFailed'));
+                    return;
+                }
 
                 // Initialize simulation controller
-                simulationController = new SimulationController(debug, particleRenderer);
+                debug.track('Simulation', 'Initializing controller');
+                simulationController = new SimulationController(debug, particleRenderer, webglManager, ui);
                 simulationController.initializeWorker();
 
                 // Set up UI controller with references
                 ui.setControllers(simulationController, webglManager);
 
-                // Start animation
+                // Hide loading overlay
+                ui.showLoading(false);
+
+                // Start animation loop
                 animate();
                 
-                debug.track('Initialization', 'Complete');
+                debug.track('Init', 'Initialization complete');
             } catch (error) {
                 console.error('Initialization error:', error);
                 debug.track('Init Error', error.message);
                 ui.showError(i18n.t('messages.initError'));
+                cleanup();
             }
         }
 
-        // Handle page unload
+        // Ensure proper cleanup on page unload
         window.addEventListener('unload', cleanup);
 
         // Start initialization
         init().catch(error => {
             console.error('Fatal initialization error:', error);
             ui.showError(i18n.t('messages.fatalError'));
+            cleanup();
         });
     </script>
 </body>

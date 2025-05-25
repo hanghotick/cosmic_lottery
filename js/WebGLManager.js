@@ -42,44 +42,87 @@ export class WebGLManager {
      * Initialize Three.js scene and renderer
      */
     async init() {
-        // Check THREE.js availability
-        if (typeof THREE === 'undefined') {
-            throw new Error('THREE.js library is not loaded');
+        try {
+            // Check THREE.js availability
+            if (typeof THREE === 'undefined') {
+                throw new Error('THREE.js library is not loaded');
+            }
+
+            // Get canvas element
+            this.canvasElement = document.getElementById('particleCanvas');
+            if (!this.canvasElement) {
+                throw new Error('Canvas element not found');
+            }
+
+            // Check WebGL support
+            if (!this.isWebGLAvailable()) {
+                throw new Error('WebGL is not supported in this browser');
+            }
+
+            // Scene setup
+            this.scene = new THREE.Scene();
+            this.scene.background = null; // Transparent background
+
+            // Camera setup
+            this.camera = new THREE.PerspectiveCamera(
+                CAMERA_CONFIG.FOV,
+                window.innerWidth / window.innerHeight,
+                CAMERA_CONFIG.NEAR,
+                CAMERA_CONFIG.FAR
+            );
+            this.updateCameraPosition();
+
+            // Renderer setup with error checking
+            try {
+                this.renderer = new THREE.WebGLRenderer({
+                    canvas: this.canvasElement,
+                    antialias: true,
+                    alpha: true,
+                    powerPreference: "high-performance"
+                });
+            } catch (error) {
+                throw new Error(`Failed to create WebGL renderer: ${error.message}`);
+            }
+
+            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Limit pixel ratio for performance
+            
+            // Initial size setup
+            this.handleResize();
+            
+            // Add event listeners
+            this.setupEventListeners();
+            
+            // Create scene objects
+            await this.createSceneObjects();
+            
+            this.isActive = true;
+            this.debug.track('WebGL', 'Initialized successfully');
+            return true;
+        } catch (error) {
+            this.debug.track('WebGL Error', error.message);
+            this.isActive = false;
+            throw error;
         }
+    }
 
-        // Scene setup
-        this.scene = new THREE.Scene();
-        this.scene.background = null; // Transparent background
-
-        // Camera setup
-        this.camera = new THREE.PerspectiveCamera(
-            CAMERA_CONFIG.FOV,
-            window.innerWidth / window.innerHeight,
-            CAMERA_CONFIG.NEAR,
-            CAMERA_CONFIG.FAR
-        );
-        this.updateCameraPosition();
-
-        // Renderer setup
-        this.canvasElement = document.getElementById('particleCanvas');
-        this.renderer = new THREE.WebGLRenderer({
-            canvas: this.canvasElement,
-            antialias: true,
-            alpha: true
-        });
-        this.renderer.setPixelRatio(window.devicePixelRatio);
-        
-        // Initial size setup
-        this.handleResize();
-        
-        // Add event listeners
-        this.setupEventListeners();
-        
-        // Create scene objects
-        await this.createSceneObjects();
-        
-        this.isActive = true;
-        this.debug.track('WebGL', 'Initialized');
+    /**
+     * Check if WebGL is available
+     */
+    isWebGLAvailable() {
+        try {
+            const canvas = document.createElement('canvas');
+            const gl = canvas.getContext('webgl2') || 
+                      canvas.getContext('webgl') || 
+                      canvas.getContext('experimental-webgl');
+            
+            const hasWebGL = !!gl;
+            if (hasWebGL) {
+                gl.getExtension('WEBGL_lose_context')?.loseContext();
+            }
+            return hasWebGL;
+        } catch (e) {
+            return false;
+        }
     }
 
     /**

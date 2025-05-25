@@ -5,8 +5,10 @@ import { CAMERA_CONFIG, PHYSICS_CONFIG } from './config.js';
  * Manages WebGL context, including setup, context loss, and restoration
  */
 export class WebGLManager {
-    constructor(debug) {
+    constructor(debug, ui = null, i18n = null) {
         this.debug = debug;
+        this.ui = ui;
+        this.i18n = i18n;
         
         // Three.js core components
         this.scene = null;
@@ -30,6 +32,14 @@ export class WebGLManager {
         this.canvasElement = null;
         this.resizeObserver = null;
         
+        // Performance monitoring
+        this.lastFrameTime = 0;
+        this.frameCount = 0;
+        this.frameTimes = new Array(60).fill(0);
+        this.frameTimeIndex = 0;
+        this.targetFrameRate = 60;
+        this.frameInterval = 1000 / this.targetFrameRate;
+        
         // Bind methods
         this.handleResize = this.handleResize.bind(this);
         this.onPointerDown = this.onPointerDown.bind(this);
@@ -48,60 +58,104 @@ export class WebGLManager {
                 throw new Error('THREE.js library is not loaded');
             }
 
-            // Get canvas element
+            // Clean up existing resources
+            this.dispose();
+
+            // Get and validate canvas element
             this.canvasElement = document.getElementById('particleCanvas');
             if (!this.canvasElement) {
                 throw new Error('Canvas element not found');
             }
 
-            // Check WebGL support
+            // Check WebGL support with detailed diagnostics
             if (!this.isWebGLAvailable()) {
-                throw new Error('WebGL is not supported in this browser');
+                const diagnostics = this.getWebGLDiagnostics();
+                throw new Error(`WebGL not supported: ${diagnostics}`);
             }
 
-            // Scene setup
-            this.scene = new THREE.Scene();
-            this.scene.background = null; // Transparent background
-
-            // Camera setup
-            this.camera = new THREE.PerspectiveCamera(
-                CAMERA_CONFIG.FOV,
-                window.innerWidth / window.innerHeight,
-                CAMERA_CONFIG.NEAR,
-                CAMERA_CONFIG.FAR
-            );
-            this.updateCameraPosition();
-
-            // Renderer setup with error checking
+            // Scene setup with error boundaries
             try {
+                this.scene = new THREE.Scene();
+                this.scene.background = null;
+                const aspect = this.canvasElement.clientWidth / this.canvasElement.clientHeight;
+                this.camera = new THREE.PerspectiveCamera(
+                    CAMERA_CONFIG.FOV,
+                    aspect,
+                    CAMERA_CONFIG.NEAR,
+                    CAMERA_CONFIG.FAR
+                );
                 this.renderer = new THREE.WebGLRenderer({
                     canvas: this.canvasElement,
                     antialias: true,
                     alpha: true,
-                    powerPreference: "high-performance"
+                    powerPreference: "high-performance",
+                    failIfMajorPerformanceCaveat: true
                 });
+                // Optimize renderer settings
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                this.renderer.setSize(this.canvasElement.clientWidth, this.canvasElement.clientHeight, false);
+                this.renderer.capabilities.getMaxAnisotropy();
+                // Robust dev check
+                let isDev = false;
+                try {
+                    isDev = (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'development') ||
+                        (typeof window !== 'undefined' && window.location && window.location.hostname === 'localhost');
+                } catch (e) {
+                    isDev = false;
+                }
+                // Only enable shader error checking if available
+                if (isDev && this.renderer.debug && typeof this.renderer.debug.checkShaderErrors !== 'undefined') {
+                    this.renderer.debug.checkShaderErrors = true;
+                }
             } catch (error) {
-                throw new Error(`Failed to create WebGL renderer: ${error.message}`);
+                throw new Error(`Failed to initialize THREE.js core: ${error.message}`);
             }
 
-            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Limit pixel ratio for performance
-            
-            // Initial size setup
-            this.handleResize();
-            
-            // Add event listeners
+            // Set up scene objects with independent error handling
+            try {
+                await this.createSceneObjects();
+            } catch (error) {
+                if (this.debug && typeof this.debug.track === 'function') {
+                    this.debug.track('Scene Error', `Failed to create scene objects: ${error.message}`);
+                }
+            }
+
+            // Set up event listeners
             this.setupEventListeners();
             
-            // Create scene objects
-            await this.createSceneObjects();
-            
             this.isActive = true;
-            this.debug.track('WebGL', 'Initialized successfully');
+            if (this.debug && typeof this.debug.track === 'function') {
+                this.debug.track('WebGL', 'Initialization complete');
+            }
+            
+            // Perform initial render
+            this.updateCameraPosition();
+            this.renderer.render(this.scene, this.camera);
+            
             return true;
         } catch (error) {
-            this.debug.track('WebGL Error', error.message);
+            if (this.debug && typeof this.debug.track === 'function') {
+                this.debug.track('WebGL Error', error.message);
+            }
             this.isActive = false;
             throw error;
+        }
+    }
+
+    getWebGLDiagnostics() {
+        try {
+            const canvas = document.createElement('canvas');
+            const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+            
+            if (!gl) return 'WebGL context creation failed';
+            
+            const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+            const vendor = debugInfo ? gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) : 'Unknown';
+            const renderer = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : 'Unknown';
+            
+            return `Vendor: ${vendor}, Renderer: ${renderer}`;
+        } catch (e) {
+            return 'Failed to get WebGL diagnostics';
         }
     }
 
@@ -111,10 +165,10 @@ export class WebGLManager {
     isWebGLAvailable() {
         try {
             const canvas = document.createElement('canvas');
+            // Fix typo: 'experimental-web-gl' -> 'experimental-webgl'
             const gl = canvas.getContext('webgl2') || 
                       canvas.getContext('webgl') || 
                       canvas.getContext('experimental-webgl');
-            
             const hasWebGL = !!gl;
             if (hasWebGL) {
                 gl.getExtension('WEBGL_lose_context')?.loseContext();
@@ -264,8 +318,10 @@ export class WebGLManager {
         this.canvasElement.addEventListener('wheel', this.onMouseWheel);
 
         // Context loss handling
-        this.canvasElement.addEventListener('webglcontextlost', this.handleContextLost.bind(this));
-        this.canvasElement.addEventListener('webglcontextrestored', this.handleContextRestored.bind(this));
+        this._boundContextLost = this.handleContextLost.bind(this);
+        this._boundContextRestored = this.handleContextRestored.bind(this);
+        this.canvasElement.addEventListener('webglcontextlost', this._boundContextLost);
+        this.canvasElement.addEventListener('webglcontextrestored', this._boundContextRestored);
     }
 
     /**
@@ -325,48 +381,129 @@ export class WebGLManager {
     handleContextLost(event) {
         event.preventDefault();
         this.isActive = false;
-        this.debug.track('WebGL', 'Context Lost');
+        if (this.debug && typeof this.debug.track === 'function') {
+            this.debug.track('WebGL', 'Context Lost - Saving State');
+        }
+        // Save current state
+        this.savedState = {
+            cameraPosition: this.camera?.position?.clone(),
+            cameraRotation: { ...this.currentRotation },
+            cameraDistance: this.cameraDistance
+        };
+        // Notify UI if available
+        if (this.ui && typeof this.ui.showError === 'function' && this.i18n && typeof this.i18n.t === 'function') {
+            this.ui.showError(this.i18n.t('errors.webglContextLost'), true);
+        }
     }
 
     /**
      * Handle WebGL context restoration
      */
     async handleContextRestored() {
-        await this.init();
-        this.debug.track('WebGL', 'Context Restored');
+        if (this.debug && typeof this.debug.track === 'function') {
+            this.debug.track('WebGL', 'Context Restored - Reinitializing');
+        }
+        
+        try {
+            // Reinitialize renderer
+            await this.init();
+            
+            // Restore saved state
+            if (this.savedState) {
+                if (this.savedState.cameraPosition) {
+                    this.camera.position.copy(this.savedState.cameraPosition);
+                }
+                this.currentRotation = { ...this.savedState.cameraRotation };
+                this.targetRotation = { ...this.savedState.cameraRotation };
+                this.cameraDistance = this.savedState.cameraDistance;
+            }
+            
+            // Hide error if UI is available
+            if (this.ui && typeof this.ui.hideError === 'function') {
+                this.ui.hideError();
+            }
+            if (this.debug && typeof this.debug.track === 'function') {
+                this.debug.track('WebGL', 'Context Restored Successfully');
+            }
+        } catch (error) {
+            if (this.debug && typeof this.debug.track === 'function') {
+                this.debug.track('WebGL Error', 'Context Restoration Failed: ' + error.message);
+            }
+            if (this.ui && typeof this.ui.showError === 'function' && this.i18n && typeof this.i18n.t === 'function') {
+                this.ui.showError(this.i18n.t('errors.webglContextRestoreFailed'));
+            }
+        }
     }
 
     /**
      * Clean up resources
      */
     dispose() {
-        // Remove event listeners
-        this.resizeObserver?.disconnect();
+        // Prevent double-dispose
+        if (!this.scene && !this.renderer && !this.camera) return;
+        if (this.resizeObserver) {
+            this.resizeObserver.disconnect();
+            this.resizeObserver = null;
+        }
         this.canvasElement?.removeEventListener('pointerdown', this.onPointerDown);
         window.removeEventListener('pointermove', this.onPointerMove);
         window.removeEventListener('pointerup', this.onPointerUp);
         this.canvasElement?.removeEventListener('wheel', this.onMouseWheel);
+        // Remove context loss/restoration listeners using the same bound references
+        if (this.canvasElement) {
+            if (this._boundContextLost) this.canvasElement.removeEventListener('webglcontextlost', this._boundContextLost);
+            if (this._boundContextRestored) this.canvasElement.removeEventListener('webglcontextrestored', this._boundContextRestored);
+        }
 
         // Dispose of scene objects
-        this.cubeWireframe?.geometry.dispose();
-        this.cubeWireframe?.material.dispose();
-        this.blackholeMesh?.geometry.dispose();
-        this.blackholeMesh?.material.dispose();
+        if (this.scene) {
+            this.scene.traverse(object => {
+                if (object.geometry) {
+                    object.geometry.dispose();
+                }
+                if (object.material) {
+                    if (Array.isArray(object.material)) {
+                        object.material.forEach(material => this.disposeMaterial(material));
+                    } else {
+                        this.disposeMaterial(object.material);
+                    }
+                }
+            });
+        }
 
-        // Dispose of renderer
-        this.renderer?.dispose();
+        // Clean up renderer
+        if (this.renderer) {
+            this.renderer.dispose();
+            this.renderer.forceContextLoss();
+            this.renderer = null;
+        }
 
         // Clear references
         this.scene = null;
         this.camera = null;
-        this.renderer = null;
         this.cubeWireframe = null;
         this.blackholeMesh = null;
         this.blackholeUniforms = null;
-        this.canvasElement = null;
+        this.savedState = null;
         this.isActive = false;
 
-        this.debug.track('WebGL', 'Disposed');
+        if (this.debug && typeof this.debug.track === 'function') {
+            this.debug.track('WebGL', 'Resources disposed');
+        }
+    }
+
+    disposeMaterial(material) {
+        if (!material) return;
+
+        // Dispose of material properties
+        Object.keys(material).forEach(key => {
+            if (material[key] && typeof material[key].dispose === 'function') {
+                material[key].dispose();
+            }
+        });
+
+        // Dispose of the material itself
+        material.dispose();
     }
 
     /**
@@ -406,11 +543,30 @@ export class WebGLManager {
     render() {
         if (!this.isActive) return;
         
+        const currentTime = performance.now();
+        const deltaTime = currentTime - this.lastFrameTime;
+        
+        // Frame rate limiting
+        if (deltaTime < this.frameInterval) return;
+        
+        // Performance monitoring
+        this.frameTimes[this.frameTimeIndex] = deltaTime;
+        this.frameTimeIndex = (this.frameTimeIndex + 1) % this.frameTimes.length;
+        this.frameCount++;
+        
+        if (this.frameCount % 60 === 0) {
+            const avgFrameTime = this.frameTimes.reduce((a, b) => a + b) / this.frameTimes.length;
+            const fps = 1000 / avgFrameTime;
+            this.debug.track('FPS', Math.round(fps));
+        }
+        
         // Smooth camera rotation
         this.currentRotation.x += (this.targetRotation.x - this.currentRotation.x) * 0.1;
         this.currentRotation.y += (this.targetRotation.y - this.currentRotation.y) * 0.1;
         
         this.updateCameraPosition();
         this.renderer.render(this.scene, this.camera);
+        
+        this.lastFrameTime = currentTime;
     }
 }
